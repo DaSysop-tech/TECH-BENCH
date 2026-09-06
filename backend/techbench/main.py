@@ -341,4 +341,7 @@ if FRONTEND_DIST.exists():
         safe = safe_dist_file(FRONTEND_DIST, path)
         if safe is not None:
             return FileResponse(safe)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        return FileResponse(
+            FRONTEND_DIST / "index.html",
+            headers={"Cache-Control": "no-store"},
+        )
