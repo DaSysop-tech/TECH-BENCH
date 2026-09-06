@@ -76,9 +76,19 @@ state = BenchState()
 def _decorate(machine: Machine, snapshot: MachineSnapshot, findings: list[Finding] | None = None) -> Machine:
     findings = findings if findings is not None else diagnose(snapshot)
     rem = state.remediations.get(machine.id, set())
+    present = {f.id for f in findings}
+    if machine.findings:
+        for old in machine.findings:
+            if old.id in rem and old.id not in present:
+                copied = old.model_copy()
+                copied.remediated = True
+                findings.append(copied)
+                present.add(old.id)
     for f in findings:
         if f.id in rem:
             f.remediated = True
+    rank = {Severity.critical: 0, Severity.warning: 1, Severity.info: 2, Severity.ok: 3}
+    findings.sort(key=lambda f: (1 if f.remediated else 0, rank[f.severity], -f.confidence, f.title))
     machine.snapshot = snapshot
     machine.findings = findings
     machine.overall = overall_severity(findings)
