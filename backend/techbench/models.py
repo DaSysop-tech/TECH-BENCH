@@ -26,119 +26,119 @@ class MachineStatus(str, Enum):
 
 
 class ComponentHealth(BaseModel):
-    id: str
-    label: str
+    id: str = Field(max_length=64)
+    label: str = Field(max_length=64)
     status: Severity
-    metrics: dict[str, Any] = Field(default_factory=dict)
-    notes: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict, max_length=24)
+    notes: list[str] = Field(default_factory=list, max_length=16)
 
 
 class Finding(BaseModel):
-    id: str
+    id: str = Field(max_length=96)
     severity: Severity
-    component: str
-    title: str
-    summary: str
-    evidence: list[str] = Field(default_factory=list)
-    recommendations: list[str] = Field(default_factory=list)
-    confidence: float = 0.8
-    playbook_id: str | None = None
+    component: str = Field(max_length=32)
+    title: str = Field(max_length=200)
+    summary: str = Field(max_length=2000)
+    evidence: list[str] = Field(default_factory=list, max_length=12)
+    recommendations: list[str] = Field(default_factory=list, max_length=12)
+    confidence: float = Field(default=0.8, ge=0, le=1)
+    playbook_id: str | None = Field(default=None, max_length=64)
     remediated: bool = False
 
 
 class ProcessInfo(BaseModel):
-    pid: int
-    name: str
-    cpu_pct: float
-    mem_pct: float
-    user: str = ""
+    pid: int = Field(ge=0, le=4_000_000_000)
+    name: str = Field(max_length=128)
+    cpu_pct: float = Field(ge=0, le=100)
+    mem_pct: float = Field(ge=0, le=100)
+    user: str = Field(default="", max_length=64)
     signed: bool | None = None
-    path: str = ""
-    net_kbps: float = 0.0
+    path: str = Field(default="", max_length=180)
+    net_kbps: float = Field(default=0.0, ge=0, le=10_000_000)
 
 
 class VolumeInfo(BaseModel):
-    mount: str
-    fs: str
-    total_gb: float
-    used_pct: float
-    model: str = ""
+    mount: str = Field(max_length=64)
+    fs: str = Field(max_length=32)
+    total_gb: float = Field(ge=0, le=1_000_000)
+    used_pct: float = Field(ge=0, le=100)
+    model: str = Field(default="", max_length=128)
 
 
 class SmartInfo(BaseModel):
-    device: str
-    model: str
-    health: str
-    temperature_c: float | None = None
-    reallocated: int = 0
-    pending: int = 0
-    power_on_hours: int = 0
-    latency_ms: float = 0.0
+    device: str = Field(max_length=64)
+    model: str = Field(max_length=128)
+    health: str = Field(max_length=64)
+    temperature_c: float | None = Field(default=None, ge=-50, le=200)
+    reallocated: int = Field(default=0, ge=0, le=1_000_000)
+    pending: int = Field(default=0, ge=0, le=1_000_000)
+    power_on_hours: int = Field(default=0, ge=0, le=1_000_000)
+    latency_ms: float = Field(default=0.0, ge=0, le=60_000)
 
 
 class EventInfo(BaseModel):
-    ts: str
-    source: str
-    level: str
-    message: str
+    ts: str = Field(max_length=64)
+    source: str = Field(max_length=128)
+    level: str = Field(max_length=32)
+    message: str = Field(max_length=500)
 
 
 class TelemetrySample(BaseModel):
     ts: float
-    cpu_pct: float
-    mem_pct: float
-    disk_pct: float
-    net_kbps: float
-    cpu_temp_c: float | None = None
-    gpu_temp_c: float | None = None
-    fan_rpm: int | None = None
+    cpu_pct: float = Field(ge=0, le=100)
+    mem_pct: float = Field(ge=0, le=100)
+    disk_pct: float = Field(ge=0, le=100)
+    net_kbps: float = Field(ge=0, le=10_000_000)
+    cpu_temp_c: float | None = Field(default=None, ge=-50, le=200)
+    gpu_temp_c: float | None = Field(default=None, ge=-50, le=200)
+    fan_rpm: int | None = Field(default=None, ge=0, le=50_000)
 
 
 class Inventory(BaseModel):
-    hostname: str
-    os: str
-    cpu: str
-    ram_gb: float
-    gpu: str = "Unknown"
-    motherboard: str = "Unknown"
-    disks: list[str] = Field(default_factory=list)
-    uptime_hours: float = 0
-    ip: str = ""
-    agent_version: str = "1.0.0"
+    hostname: str = Field(max_length=128)
+    os: str = Field(max_length=128)
+    cpu: str = Field(max_length=128)
+    ram_gb: float = Field(ge=0, le=4096)
+    gpu: str = Field(default="Unknown", max_length=128)
+    motherboard: str = Field(default="Unknown", max_length=128)
+    disks: list[str] = Field(default_factory=list, max_length=16)
+    uptime_hours: float = Field(default=0, ge=0, le=1_000_000)
+    ip: str = Field(default="", max_length=64)
+    agent_version: str = Field(default="1.0.0", max_length=32)
 
 
 class MachineSnapshot(BaseModel):
     inventory: Inventory
-    components: list[ComponentHealth] = Field(default_factory=list)
-    processes: list[ProcessInfo] = Field(default_factory=list)
-    volumes: list[VolumeInfo] = Field(default_factory=list)
-    network: dict[str, Any] = Field(default_factory=dict)
-    events: list[EventInfo] = Field(default_factory=list)
-    smart: list[SmartInfo] = Field(default_factory=list)
+    components: list[ComponentHealth] = Field(default_factory=list, max_length=32)
+    processes: list[ProcessInfo] = Field(default_factory=list, max_length=64)
+    volumes: list[VolumeInfo] = Field(default_factory=list, max_length=32)
+    network: dict[str, Any] = Field(default_factory=dict, max_length=32)
+    events: list[EventInfo] = Field(default_factory=list, max_length=50)
+    smart: list[SmartInfo] = Field(default_factory=list, max_length=16)
     telemetry: TelemetrySample | None = None
     defender_enabled: bool | None = None
-    startup_count: int | None = None
+    startup_count: int | None = Field(default=None, ge=0, le=10_000)
 
 
 class Machine(BaseModel):
-    id: str
-    hostname: str
-    alias: str
-    os: str
+    id: str = Field(max_length=64)
+    hostname: str = Field(max_length=128)
+    alias: str = Field(max_length=128)
+    os: str = Field(max_length=128)
     kind: MachineKind
     status: MachineStatus = MachineStatus.online
     last_seen: float = 0
     overall: Severity = Severity.ok
-    health_score: int = 100
+    health_score: int = Field(default=100, ge=0, le=100)
     snapshot: MachineSnapshot | None = None
-    findings: list[Finding] = Field(default_factory=list)
-    location: str = ""
-    owner: str = ""
+    findings: list[Finding] = Field(default_factory=list, max_length=40)
+    location: str = Field(default="", max_length=128)
+    owner: str = Field(default="", max_length=128)
 
 
 class PairRequest(BaseModel):
-    alias: str = ""
-    location: str = ""
+    alias: str = Field(default="", max_length=64)
+    location: str = Field(default="", max_length=64)
 
 
 class PairResponse(BaseModel):
@@ -148,22 +148,26 @@ class PairResponse(BaseModel):
 
 
 class AgentRegister(BaseModel):
-    code: str
+    code: str = Field(max_length=24)
     inventory: Inventory
 
 
 class AgentSnapshotIn(BaseModel):
-    token: str
+    token: str = Field(max_length=128)
     snapshot: MachineSnapshot
 
 
 class AgentTelemetryIn(BaseModel):
-    token: str
+    token: str = Field(max_length=128)
     sample: TelemetrySample
 
 
 class RemediateIn(BaseModel):
-    finding_id: str
+    finding_id: str = Field(max_length=96)
+
+
+class SessionIn(BaseModel):
+    token: str = Field(max_length=200)
 
 
 class ScanStage(BaseModel):

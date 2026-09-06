@@ -52,12 +52,17 @@ def collect_local_snapshot() -> MachineSnapshot:
         )
 
     processes: list[ProcessInfo] = []
-    for proc in psutil.process_iter(["pid", "name", "username", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "name", "username"]):
         try:
             cpu = proc.cpu_percent(interval=None)
             mem = proc.memory_percent()
             if cpu < 0.5 and mem < 0.8:
                 continue
+            exe = ""
+            try:
+                exe = proc.exe() or ""
+            except (psutil.AccessDenied, psutil.Error):
+                exe = proc.info.get("name") or ""
             processes.append(
                 ProcessInfo(
                     pid=proc.pid,
@@ -65,7 +70,7 @@ def collect_local_snapshot() -> MachineSnapshot:
                     cpu_pct=cpu,
                     mem_pct=mem,
                     user=proc.info.get("username") or "",
-                    path=" ".join(proc.info.get("cmdline") or [])[:180],
+                    path=exe[:180],
                     signed=None,
                 )
             )

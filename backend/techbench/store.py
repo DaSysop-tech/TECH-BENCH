@@ -156,8 +156,8 @@ def get_machine(machine_id: str) -> Machine:
 
 
 def create_pair_code(alias: str, location: str) -> str:
-    code = secrets.token_hex(3).upper()
-    code = f"{code[:3]}-{code[3:]}"
+    raw = secrets.token_hex(5).upper()
+    code = f"{raw[:5]}-{raw[5:]}"
     state.pair_slots[code] = PairSlot(code=code, alias=alias, location=location, expires=time.time() + 600)
     return code
 
@@ -256,6 +256,7 @@ def remediate(machine_id: str, finding_id: str) -> Machine:
     if not m.snapshot:
         raise RuntimeError("No snapshot")
     state.remediations[machine_id].add(finding_id)
+    # Simulated tickets only. Never run OS commands on local or remote PCs.
     if m.kind == MachineKind.simulated:
         snap = apply_remediation(machine_id, finding_id, m.snapshot)
         state.sim_overrides[machine_id] = snap

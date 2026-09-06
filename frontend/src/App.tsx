@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Header from "./components/Header";
+import LockScreen from "./components/LockScreen";
 import MachineRail from "./components/MachineRail";
 import PairModal from "./components/PairModal";
 import Schematic from "./components/Schematic";
 import Scope from "./components/Scope";
 import TelemetryStrip from "./components/TelemetryStrip";
 import ToolRack from "./components/ToolRack";
-import { fetchMachine, fetchMachines, fetchTelemetry, openMachineSocket, remediate, startScan } from "./api";
+import {
+  fetchMachine,
+  fetchMachines,
+  fetchTelemetry,
+  openMachineSocket,
+  remediate,
+  startScan,
+  unlockLoopback,
+  unlockWithToken,
+} from "./api";
 import type { Machine, TelemetrySample, ToolId } from "./types";
 
 export default function App() {
+  const [unlocked, setUnlocked] = useState(false);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [machine, setMachine] = useState<Machine | null>(null);
@@ -27,15 +38,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const auto = await unlockLoopback();
+      if (cancelled) return;
+      if (auto) {
+        setUnlocked(true);
+        return;
+      }
+      try {
+        await fetchMachines();
+        if (!cancelled) setUnlocked(true);
+      } catch {
+        if (!cancelled) setUnlocked(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!unlocked) return;
     refreshList().catch(console.error);
     const id = setInterval(() => {
       fetchMachines().then(setMachines).catch(() => undefined);
     }, 4000);
     return () => clearInterval(id);
-  }, [refreshList]);
+  }, [refreshList, unlocked]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !unlocked) return;
     let cancelled = false;
     fetchMachine(selectedId)
       .then((m) => {
@@ -75,7 +108,7 @@ export default function App() {
       cancelled = true;
       ws.close();
     };
-  }, [selectedId]);
+  }, [selectedId, unlocked]);
 
   const components = machine?.snapshot?.components ?? [];
 
@@ -112,6 +145,16 @@ export default function App() {
     if (!machine) return "";
     return `${machine.kind} · ${machine.status}`;
   }, [machine]);
+
+  async function handleUnlock(token: string) {
+    const ok = await unlockWithToken(token);
+    if (ok) setUnlocked(true);
+    return ok;
+  }
+
+  if (!unlocked) {
+    return <LockScreen onUnlock={handleUnlock} />;
+  }
 
   return (
     <div className="app">

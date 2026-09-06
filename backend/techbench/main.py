@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from techbench import __version__
@@ -17,6 +18,23 @@ from techbench.models import (
     PairRequest,
     PairResponse,
     RemediateIn,
+    SessionIn,
+)
+from techbench.security import (
+    MAX_BODY_BYTES,
+    SECURITY_HEADERS,
+    SESSION_COOKIE,
+    RateLimiter,
+    client_ip,
+    drop_session,
+    ensure_bench_token,
+    host_header_ok,
+    is_loopback_ip,
+    issue_session,
+    safe_dist_file,
+    same_origin_ok,
+    session_ok,
+    token_ok,
 )
 from techbench.store import (
     create_pair_code,
@@ -34,10 +52,59 @@ from techbench.store import (
 )
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+DEBUG = os.environ.get("TECHBENCH_DEBUG") == "1"
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "TECHBENCH_CORS",
+        "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:5173,http://localhost:5173",
+    ).split(",")
+    if o.strip()
+]
+_pair_limit = RateLimiter(10, 60)
+_register_limit = RateLimiter(20, 60)
+_agent_post_limit = RateLimiter(120, 60)
+_session_limit = RateLimiter(20, 60)
+
+PUBLIC_API = {
+    ("GET", "/api/health"),
+    ("POST", "/api/session"),
+    ("POST", "/api/session/loopback"),
+    ("POST", "/api/session/logout"),
+}
+
+
+def _bench_token() -> str:
+    return ensure_bench_token()
+
+
+def _authorized(request: Request) -> bool:
+    path = request.url.path
+    method = request.method.upper()
+    if (method, path) in PUBLIC_API or not path.startswith("/api"):
+        return True
+    token = _bench_token()
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer ") and token_ok(auth[7:].strip(), token):
+        return True
+    return session_ok(request.cookies.get(SESSION_COOKIE))
+
+
+def _set_session_cookie(response: Response, sid: str) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        sid,
+        httponly=True,
+        samesite="strict",
+        secure=False,
+        max_age=12 * 3600,
+        path="/",
+    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_bench_token()
     seed_local()
     seed_demo_fleet()
     task = asyncio.create_task(telemetry_loop())
@@ -54,20 +121,72 @@ app = FastAPI(
     description="Virtual tech bench for remote PC diagnostics.",
     version=__version__,
     lifespan=lifespan,
+    docs_url="/docs" if DEBUG else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if DEBUG else None,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type", "X-Techbench"],
 )
+
+
+@app.middleware("http")
+async def harden(request: Request, call_next):
+    if not host_header_ok(request.headers.get("host")):
+        return JSONResponse({"detail": "Invalid host"}, status_code=400)
+    length = request.headers.get("content-length")
+    if length and length.isdigit() and int(length) > MAX_BODY_BYTES:
+        return JSONResponse({"detail": "Payload too large"}, status_code=413)
+    if not _authorized(request):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    response = await call_next(request)
+    for key, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(key, value)
+    return response
 
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": __version__, "machines": len(state.machines)}
+    return {"ok": True, "version": __version__, "auth": "required"}
+
+
+@app.post("/api/session")
+def api_session(body: SessionIn, request: Request, response: Response):
+    ip = client_ip(request.client.host if request.client else None)
+    if not _session_limit.hit(ip):
+        raise HTTPException(429, "Too many login attempts")
+    if not token_ok(body.token.strip(), _bench_token()):
+        raise HTTPException(401, "Bad token")
+    _set_session_cookie(response, issue_session())
+    return {"ok": True}
+
+
+@app.post("/api/session/loopback")
+def api_session_loopback(request: Request, response: Response):
+    ip = client_ip(request.client.host if request.client else None)
+    if not is_loopback_ip(ip) and ip != "testclient":
+        raise HTTPException(403, "Loopback session is only available on the bench host")
+    if request.headers.get("x-techbench") != "1":
+        raise HTTPException(403, "Missing client header")
+    origin = request.headers.get("origin")
+    if origin and not same_origin_ok(origin, request.headers.get("host")):
+        raise HTTPException(403, "Bad origin")
+    if not _session_limit.hit(ip):
+        raise HTTPException(429, "Too many login attempts")
+    _set_session_cookie(response, issue_session())
+    return {"ok": True}
+
+
+@app.post("/api/session/logout")
+def api_session_logout(request: Request, response: Response):
+    drop_session(request.cookies.get(SESSION_COOKIE))
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"ok": True}
 
 
 @app.get("/api/machines")
@@ -88,7 +207,7 @@ def api_telemetry(machine_id: str, limit: int = 120):
     if machine_id not in state.machines:
         raise HTTPException(404, "Unknown machine")
     buf = list(state.telemetry.get(machine_id, []))
-    return [s.model_dump(mode="json") for s in buf[-limit:]]
+    return [s.model_dump(mode="json") for s in buf[-min(limit, 180) :]]
 
 
 @app.post("/api/machines/{machine_id}/scan")
@@ -116,14 +235,24 @@ def api_demo_fleet():
 
 
 @app.post("/api/pair", response_model=PairResponse)
-def api_pair(body: PairRequest):
+def api_pair(body: PairRequest, request: Request):
+    ip = client_ip(request.client.host if request.client else None)
+    if not _pair_limit.hit(ip):
+        raise HTTPException(429, "Too many pairing requests")
     code = create_pair_code(body.alias, body.location)
-    cmd = f"python agent/techbench_agent.py --server http://BENCH_HOST:8000 --code {code}"
+    cmd = (
+        "python agent/techbench_agent.py "
+        "--server https://BENCH_HOST:8000 "
+        f"--code {code} --bench-token BENCH_TOKEN"
+    )
     return PairResponse(code=code, agent_command=cmd)
 
 
 @app.post("/api/agent/register")
-def api_agent_register(body: AgentRegister):
+def api_agent_register(body: AgentRegister, request: Request):
+    ip = client_ip(request.client.host if request.client else None)
+    if not _register_limit.hit(ip):
+        raise HTTPException(429, "Too many register attempts")
     try:
         token, machine = register_agent(body.code, body.inventory)
     except PermissionError as exc:
@@ -132,7 +261,10 @@ def api_agent_register(body: AgentRegister):
 
 
 @app.post("/api/agent/snapshot")
-async def api_agent_snapshot(body: AgentSnapshotIn):
+async def api_agent_snapshot(body: AgentSnapshotIn, request: Request):
+    ip = client_ip(request.client.host if request.client else None)
+    if not _agent_post_limit.hit(ip):
+        raise HTTPException(429, "Too many agent posts")
     try:
         m = ingest_agent_snapshot(body.token, body.snapshot)
     except PermissionError as exc:
@@ -142,7 +274,10 @@ async def api_agent_snapshot(body: AgentSnapshotIn):
 
 
 @app.post("/api/agent/telemetry")
-async def api_agent_telemetry(body: AgentTelemetryIn):
+async def api_agent_telemetry(body: AgentTelemetryIn, request: Request):
+    ip = client_ip(request.client.host if request.client else None)
+    if not _agent_post_limit.hit(ip):
+        raise HTTPException(429, "Too many agent posts")
     try:
         m = ingest_agent_telemetry(body.token, body.sample)
     except PermissionError as exc:
@@ -153,6 +288,13 @@ async def api_agent_telemetry(body: AgentTelemetryIn):
 
 @app.websocket("/api/ws/machines/{machine_id}")
 async def ws_machine(websocket: WebSocket, machine_id: str):
+    token = _bench_token()
+    auth = websocket.headers.get("authorization", "")
+    bearer_ok = auth.startswith("Bearer ") and token_ok(auth[7:].strip(), token)
+    cookie_ok = session_ok(websocket.cookies.get(SESSION_COOKIE))
+    if not bearer_ok and not cookie_ok:
+        await websocket.close(code=4401)
+        return
     if machine_id not in state.machines:
         await websocket.close(code=4404)
         return
@@ -183,7 +325,7 @@ if FRONTEND_DIST.exists():
 
     @app.get("/{path:path}")
     def spa(path: str):
-        candidate = FRONTEND_DIST / path
-        if path and candidate.exists() and candidate.is_file():
-            return FileResponse(candidate)
+        safe = safe_dist_file(FRONTEND_DIST, path)
+        if safe is not None:
+            return FileResponse(safe)
         return FileResponse(FRONTEND_DIST / "index.html")
