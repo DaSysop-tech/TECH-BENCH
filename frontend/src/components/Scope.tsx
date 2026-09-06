@@ -147,18 +147,19 @@ export default function Scope({
   if (!machine) return <section className="scope" />;
   const snap = machine.snapshot;
   const component = snap?.components.find((c) => c.id === selectedComponent);
+  const bayId = machine.id;
 
   async function onExport(copyOnly: boolean) {
     setReportState("busy");
     try {
-      const text = await fetchReport(machine.id);
+      const text = await fetchReport(bayId);
       if (copyOnly) {
         await navigator.clipboard.writeText(text);
         setReportState("copied");
         window.setTimeout(() => setReportState("idle"), 1500);
         return;
       }
-      downloadText(`techbench-${machine.id}.md`, text);
+      downloadText(`techbench-${bayId}.md`, text);
       setReportState("idle");
     } catch {
       setReportState("error");

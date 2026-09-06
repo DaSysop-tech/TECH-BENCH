@@ -54,6 +54,14 @@ def test_healthy_lab_is_clean():
     assert health_score(findings) >= 90
 
 
+def test_pct_clamp_allows_multicore_process_cpu():
+    from techbench.diagnostics.collectors import _pct
+
+    assert _pct(224.8) == 100.0
+    assert _pct(-3) == 0.0
+    assert _pct(None) == 0.0
+
+
 def test_remediation_clears_malware_process():
     snap = snapshot_for("sim-warehouse", 1_700_000_000)
     findings = diagnose(snap)
@@ -181,6 +189,9 @@ def test_markdown_report_flattens_agent_text():
     body = render_markdown_report(m)
     assert "](http://evil)" not in body
     assert "line1 line2 'code'" in body
+
+
+def test_markdown_report_export(client):
     r = client.get("/api/machines/sim-frontdesk/report")
     assert r.status_code == 200
     assert "text/markdown" in r.headers["content-type"]
