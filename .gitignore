@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+frontend/dist/
+.DS_Store
+*.log
+.idea/
+.vscode/
+.env
+agent_token.json
+data/
