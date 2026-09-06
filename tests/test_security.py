@@ -83,3 +83,5 @@ def test_pair_agent_command_uses_loopback_http():
 
 def test_anonymous_report_is_denied(anon):
     assert anon.get("/api/machines/sim-frontdesk/report").status_code == 401
+    assert anon.get("/api/fleet").status_code == 401
+    assert anon.post("/api/machines/sim-lab/notes", json={"body": "nope"}).status_code == 401

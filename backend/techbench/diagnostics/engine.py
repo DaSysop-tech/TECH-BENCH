@@ -111,6 +111,23 @@ def _storage(snapshot: MachineSnapshot) -> list[Finding]:
                     playbook_id="monitor-disk",
                 )
             )
+        if drive.temperature_c is not None and drive.temperature_c >= 70:
+            out.append(
+                Finding(
+                    id=f"smart-hot-{drive.device}",
+                    severity=Severity.warning,
+                    component="storage",
+                    title="Drive running hot",
+                    summary=f"{drive.model} is {drive.temperature_c:.0f}°C. Heat accelerates NAND/HDD wear.",
+                    evidence=[f"Temperature: {drive.temperature_c:.0f}°C", f"Device: {drive.device}"],
+                    recommendations=[
+                        "Improve chassis airflow around the drive bay.",
+                        "Confirm the drive is not thermally throttling the volume.",
+                    ],
+                    confidence=0.74,
+                    playbook_id="cool-down",
+                )
+            )
 
     for vol in snapshot.volumes:
         if vol.used_pct >= 95:
@@ -447,6 +464,29 @@ def _network(snapshot: MachineSnapshot) -> list[Finding]:
                 playbook_id="fix-network",
             )
         )
+
+    errors = net.get("errors") or net.get("nic_errors") or 0
+    try:
+        errors = float(errors)
+    except (TypeError, ValueError):
+        errors = 0
+    if errors >= 50:
+        out.append(
+            Finding(
+                id="nic-errors",
+                severity=Severity.warning,
+                component="network",
+                title="NIC error counter climbing",
+                summary=f"The adapter has logged {errors:.0f} errors. Cabling or duplex mismatch is likely.",
+                evidence=[f"errors={errors:.0f}", f"IP: {ip}"],
+                recommendations=[
+                    "Swap the patch cable and switch port.",
+                    "Force auto-negotiate; avoid a 100/full mismatch.",
+                ],
+                confidence=0.76,
+                playbook_id="fix-network",
+            )
+        )
     return out
 
 
@@ -564,6 +604,34 @@ def _os_hygiene(snapshot: MachineSnapshot) -> list[Finding]:
                 evidence=[f"uptime_hours={uptime:.1f}"],
                 recommendations=["Schedule a reboot after saving work."],
                 confidence=0.65,
+            )
+        )
+
+    crashish = [
+        e
+        for e in snapshot.events
+        if e.level.lower() in {"critical", "error"}
+        and any(k in e.message.lower() for k in ("bugcheck", "kernel-power", "whea", "unexpected shutdown"))
+    ]
+    if uptime < 2 and len(crashish) >= 2:
+        out.append(
+            Finding(
+                id="reboot-loop",
+                severity=Severity.critical,
+                component="os",
+                title="Reboot loop / unexpected shutdowns",
+                summary=(
+                    f"Uptime is only {uptime:.1f} h and the log shows {len(crashish)} "
+                    "kernel-power / WHEA / bugcheck events. This box is crashing, not just slow."
+                ),
+                evidence=[f"{e.ts} [{e.source}] {e.message}" for e in crashish[:4]],
+                recommendations=[
+                    "Do not chase software until PSU rails, RAM, and SMART are clean.",
+                    "Memtest and a known-good PSU swap are the next hardware moves.",
+                    "Capture the bugcheck code before the next crash wipes it.",
+                ],
+                confidence=0.9,
+                playbook_id="stabilize-reboot-loop",
             )
         )
     return out

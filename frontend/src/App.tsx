@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "./components/Header";
 import LockScreen from "./components/LockScreen";
 import MachineRail from "./components/MachineRail";
@@ -8,16 +8,30 @@ import Scope from "./components/Scope";
 import TelemetryStrip from "./components/TelemetryStrip";
 import ToolRack from "./components/ToolRack";
 import {
+  fetchFleet,
   fetchMachine,
   fetchMachines,
+  fetchNextTicket,
   fetchTelemetry,
+  openFleetSocket,
   openMachineSocket,
   remediate,
   startScan,
   unlockLoopback,
   unlockWithToken,
 } from "./api";
-import type { Machine, TelemetrySample, ToolId } from "./types";
+import type { FleetSummary, Machine, TelemetrySample, ToolId } from "./types";
+
+const TOOL_KEYS: Record<string, ToolId> = {
+  "1": "findings",
+  "2": "hardware",
+  "3": "processes",
+  "4": "network",
+  "5": "storage",
+  "6": "thermals",
+  "7": "events",
+  "8": "journal",
+};
 
 export default function App() {
   const [unlocked, setUnlocked] = useState(false);
@@ -30,11 +44,18 @@ export default function App() {
   const [scanLabel, setScanLabel] = useState<string | null>(null);
   const [pairing, setPairing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [summary, setSummary] = useState<FleetSummary | null>(null);
+  const [toast, setToast] = useState("");
+  const [help, setHelp] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const selectedRef = useRef<string | null>(null);
+  selectedRef.current = selectedId;
 
   const refreshList = useCallback(async () => {
     const list = await fetchMachines();
     setMachines(list);
     setSelectedId((cur) => cur ?? list[0]?.id ?? null);
+    fetchFleet().then(setSummary).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -63,9 +84,26 @@ export default function App() {
     refreshList().catch(console.error);
     const id = setInterval(() => {
       fetchMachines().then(setMachines).catch(() => undefined);
+      fetchFleet().then(setSummary).catch(() => undefined);
     }, 4000);
     return () => clearInterval(id);
   }, [refreshList, unlocked]);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    const ws = openFleetSocket();
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "fleet" || msg.type === "ping") {
+        if (msg.summary) setSummary(msg.summary);
+      }
+      if (msg.type === "fleet_alert") {
+        setToast(`${msg.alias}: ${msg.from} → ${msg.to}`);
+        window.setTimeout(() => setToast(""), 6000);
+      }
+    };
+    return () => ws.close();
+  }, [unlocked]);
 
   useEffect(() => {
     if (!selectedId || !unlocked) return;
@@ -139,6 +177,48 @@ export default function App() {
     }
   }
 
+  async function jumpNext() {
+    const nxt = await fetchNextTicket(selectedRef.current);
+    setSelectedId(nxt.id);
+  }
+
+  useEffect(() => {
+    if (!unlocked) return;
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+      if (e.key === "/" && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (e.key === "?" && !typing) {
+        e.preventDefault();
+        setHelp((h) => !h);
+        return;
+      }
+      if (e.key === "Escape") {
+        setHelp(false);
+        setPairing(false);
+        return;
+      }
+      if (typing) return;
+      if (e.key === "j" || e.key === "k") {
+        const ids = machines.map((m) => m.id);
+        const cur = selectedRef.current;
+        const i = cur ? ids.indexOf(cur) : 0;
+        const next = e.key === "j" ? Math.min(ids.length - 1, i + 1) : Math.max(0, i - 1);
+        if (ids[next]) setSelectedId(ids[next]);
+      }
+      if (e.key === "s") onTool("scan");
+      if (e.key === "n") jumpNext().catch(() => undefined);
+      if (e.key === "p") setPairing(true);
+      if (TOOL_KEYS[e.key]) setTool(TOOL_KEYS[e.key]);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [unlocked, machines]);
+
   const scanning = machine?.status === "scanning" || Boolean(scanLabel);
 
   const subtitle = useMemo(() => {
@@ -158,9 +238,14 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header machineCount={machines.length} onPair={() => setPairing(true)} />
+      <Header
+        summary={summary}
+        onPair={() => setPairing(true)}
+        onNext={() => jumpNext().catch(() => undefined)}
+        onHelp={() => setHelp(true)}
+      />
       <div className="workspace">
-        <MachineRail machines={machines} selectedId={selectedId} onSelect={setSelectedId} />
+        <MachineRail ref={searchRef} machines={machines} selectedId={selectedId} onSelect={setSelectedId} />
         <section className="bench">
           <div className="panel-label">
             <span>The bench</span>
@@ -187,6 +272,18 @@ export default function App() {
         />
       </div>
       <TelemetryStrip samples={samples} />
+      {toast && <div className="toast">{toast}</div>}
+      {help && (
+        <div className="modal-back" onClick={() => setHelp(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Bench keys</h2>
+            <p>j / k next bay · n next ticket · s full scan · / search · p pair · 1–8 tools · ? this card · Esc close</p>
+            <button className="btn" type="button" onClick={() => setHelp(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
       {pairing && (
         <PairModal
           onClose={() => {

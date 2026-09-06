@@ -80,6 +80,7 @@ def test_api_lists_seeded_machines(client):
     assert "local-workstation" in ids
     assert "sim-frontdesk" in ids
     assert "sim-warehouse" in ids
+    assert "sim-hr" in ids
     fd = client.get("/api/machines/sim-frontdesk").json()
     assert fd["overall"] == "critical"
     assert any("SMART" in f["title"] or "full" in f["title"].lower() for f in fd["findings"])
@@ -139,8 +140,9 @@ def test_pairing_and_snapshot(client):
 
 def test_store_resets_between_clients(client):
     n = len(client.get("/api/machines").json())
-    assert n >= 7
+    assert n >= 8
     assert "local-workstation" in state.machines
+    assert "sim-hr" in {m["id"] for m in client.get("/api/machines").json()}
 
 
 def test_machine_list_omits_snapshot_and_counts_findings(client):
@@ -202,3 +204,59 @@ def test_markdown_report_export(client):
     assert "Open findings" in body
     missing = client.get("/api/machines/does-not-exist/report")
     assert missing.status_code == 404
+
+
+def test_hr_reboot_loop():
+    snap = snapshot_for("sim-hr", 1_700_000_000)
+    findings = diagnose(snap)
+    assert any(f.id == "reboot-loop" for f in findings)
+    assert overall_severity(findings) == Severity.critical
+
+
+def test_fleet_triage(client):
+    body = client.get("/api/fleet").json()
+    assert body["occupied"] >= 8
+    assert body["critical"] >= 1
+    assert body["worst"]["id"]
+    nxt = client.get("/api/fleet/next")
+    assert nxt.status_code == 200
+    assert nxt.json()["id"] == body["worst"]["id"]
+
+
+def test_notes_and_journal(client):
+    posted = client.post("/api/machines/sim-lab/notes", json={"body": "Leave this box in the lab."})
+    assert posted.status_code == 200
+    hist = client.get("/api/machines/sim-lab/history").json()
+    assert any("Leave this box" in n["body"] for n in hist["notes"])
+    assert any(j["action"] == "note" for j in hist["journal"])
+    scanned = client.post("/api/machines/sim-lab/scan")
+    assert scanned.status_code == 200
+    assert scanned.json()["last_delta"]["still_open"] >= 0
+    hist2 = client.get("/api/machines/sim-lab/history").json()
+    assert hist2["scans"]
+
+
+def test_remediate_journals(client):
+    body = client.get("/api/machines/sim-warehouse").json()
+    suspect = next(f for f in body["findings"] if f["id"].startswith("proc-suspect"))
+    client.post("/api/machines/sim-warehouse/remediate", json={"finding_id": suspect["id"]})
+    hist = client.get("/api/machines/sim-warehouse/history").json()
+    assert any(j["action"] == "remediated" for j in hist["journal"])
+
+
+def test_sqlite_persist_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setenv("TECHBENCH_PERSIST", "1")
+    monkeypatch.setenv("TECHBENCH_DB", str(tmp_path / "bench.db"))
+    from techbench import persist
+    from techbench.models import JournalEntry, TechNote
+
+    persist.close()
+    persist.init_db()
+    persist.save_token("tok", "remote-ab")
+    persist.save_note(TechNote(id="n1", machine_id="sim-lab", ts=1.0, body="hello"))
+    persist.save_journal(JournalEntry(machine_id="sim-lab", ts=1.0, action="note", title="t"))
+    blob = persist.load_all()
+    assert blob["tokens"]["tok"] == "remote-ab"
+    assert blob["notes"]["sim-lab"][0].body == "hello"
+    assert list(blob["journal"]["sim-lab"])[0].action == "note"
+    persist.close()

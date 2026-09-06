@@ -369,6 +369,68 @@ def lab_healthy(t: float) -> MachineSnapshot:
     )
 
 
+def hr_laptop(t: float) -> MachineSnapshot:
+    """Unexpected shutdowns + WHEA. Classic reboot-loop ticket."""
+    cpu = _noise(18, 6, t, 8.1)
+    mem = _noise(44, 4, t, 8.4)
+    inv = Inventory(
+        hostname="HR-LAPTOP-07",
+        os="Windows 11 Pro 23H2",
+        cpu="Intel Core i5-1135G7",
+        ram_gb=16,
+        gpu="Intel Iris Xe",
+        motherboard="Dell Latitude 5420",
+        disks=["SK hynix 256GB NVMe"],
+        uptime_hours=0.35,
+        ip="10.20.12.19",
+    )
+    return MachineSnapshot(
+        inventory=inv,
+        components=[
+            ComponentHealth(id="cpu", label="CPU", status=Severity.warning, metrics={"usage_pct": cpu, "temp_c": 64}),
+            ComponentHealth(id="memory", label="Memory", status=Severity.ok, metrics={"used_pct": mem, "total_gb": 16, "swap_pct": 4}),
+            ComponentHealth(id="storage", label="Storage", status=Severity.ok, metrics={"used_pct": 52}),
+            ComponentHealth(id="gpu", label="GPU", status=Severity.ok, metrics={"temp_c": 55}),
+            ComponentHealth(id="network", label="Network", status=Severity.ok, metrics={"ip": inv.ip, "errors": 2}),
+            ComponentHealth(
+                id="psu",
+                label="Power",
+                status=Severity.warning,
+                metrics={"load_pct": 28, "rails": {"12v": 11.92, "5v": 5.01}},
+            ),
+            ComponentHealth(id="thermal", label="Thermal", status=Severity.ok, metrics={"fan_rpm": 2100}),
+            ComponentHealth(id="os", label="OS", status=Severity.critical, metrics={"uptime_hours": 0.35}),
+        ],
+        processes=_base_windows_procs()
+        + [
+            ProcessInfo(pid=4200, name="Outlook.exe", cpu_pct=3, mem_pct=7, user="hr", signed=True, path="C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE"),
+        ],
+        volumes=[VolumeInfo(mount="C:", fs="NTFS", total_gb=238, used_pct=52, model="SK hynix 256GB")],
+        network={"ip": inv.ip, "dns_ok": True, "packet_loss_pct": 0.4, "gateway_ms": 2, "dns": "10.20.0.10"},
+        events=[
+            EventInfo(ts="2026-09-06 12:41:02", source="Kernel-Power", level="error", message="The system has rebooted without cleanly shutting down first. Kernel-Power 41."),
+            EventInfo(ts="2026-09-06 12:41:08", source="WHEA-Logger", level="error", message="A fatal hardware error has occurred. WHEA PCI Express error."),
+            EventInfo(ts="2026-09-06 12:10:44", source="Microsoft-Windows-WER-SystemErrorReporting", level="error", message="The computer has rebooted from a bugcheck. The bugcheck was: 0x00000124 (WHEA_UNCORRECTABLE_ERROR)."),
+            EventInfo(ts="2026-09-06 11:02:11", source="Kernel-Power", level="critical", message="Unexpected shutdown. Bugcheck 0x124 WHEA."),
+        ],
+        smart=[
+            SmartInfo(
+                device="nvme0n1",
+                model="SK hynix 256GB",
+                health="passed",
+                temperature_c=41,
+                reallocated=0,
+                pending=0,
+                power_on_hours=4100,
+                latency_ms=0.5,
+            )
+        ],
+        telemetry=TelemetrySample(ts=t, cpu_pct=cpu, mem_pct=mem, disk_pct=52, net_kbps=_noise(90, 20, t, 9), cpu_temp_c=64, gpu_temp_c=55, fan_rpm=2100),
+        defender_enabled=True,
+        startup_count=9,
+    )
+
+
 FLEET: list[SimProfile] = [
     SimProfile(
         id="sim-frontdesk",
@@ -417,6 +479,14 @@ FLEET: list[SimProfile] = [
         owner="Helpdesk",
         inventory=lab_healthy(0).inventory,
         builder=lab_healthy,
+    ),
+    SimProfile(
+        id="sim-hr",
+        alias="HR laptop (ticket #5520)",
+        location="People ops",
+        owner="Alex M.",
+        inventory=hr_laptop(0).inventory,
+        builder=hr_laptop,
     ),
 ]
 
@@ -503,5 +573,18 @@ def apply_remediation(profile_id: str, finding_id: str, snapshot: MachineSnapsho
 
     if "startup" in fid:
         snap.startup_count = 6
+
+    if "event-crash" in fid or "reboot" in fid or "whea" in fid:
+        snap.events = [
+            e
+            for e in snap.events
+            if e.level.lower() not in {"critical", "error"}
+            or not any(k in e.message.lower() for k in ("bugcheck", "kernel-power", "whea", "unexpected"))
+        ]
+        snap.inventory.uptime_hours = max(snap.inventory.uptime_hours, 8.0)
+        for c in snap.components:
+            if c.id == "os":
+                c.status = Severity.ok
+                c.metrics["uptime_hours"] = snap.inventory.uptime_hours
 
     return snap

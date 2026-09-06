@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("TECHBENCH_TOKEN", "test-secret-token")
+os.environ.setdefault("TECHBENCH_PERSIST", "0")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))

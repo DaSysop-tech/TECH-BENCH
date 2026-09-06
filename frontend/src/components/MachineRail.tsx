@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { forwardRef, useMemo, useState } from "react";
 import type { Machine, Severity } from "../types";
 
 type Filter = "all" | Severity;
@@ -20,15 +20,31 @@ function matches(machine: Machine, query: string, filter: Filter): boolean {
   return hay.includes(query);
 }
 
-export default function MachineRail({
-  machines,
-  selectedId,
-  onSelect,
-}: {
+function Spark({ values }: { values: number[] }) {
+  if (values.length < 2) return null;
+  const w = 52;
+  const h = 18;
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 1);
+  const pts = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = h - ((v - min) / (max - min || 1)) * (h - 2) - 1;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <svg className="spark" viewBox={`0 0 ${w} ${h}`} aria-hidden>
+      <polyline fill="none" stroke="currentColor" strokeWidth="1.4" points={pts} />
+    </svg>
+  );
+}
+
+const MachineRail = forwardRef<HTMLInputElement, {
   machines: Machine[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-}) {
+}>(function MachineRail({ machines, selectedId, onSelect }, searchRef) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const needle = query.trim().toLowerCase();
@@ -47,10 +63,11 @@ export default function MachineRail({
       </div>
       <div className="rail-controls">
         <input
+          ref={searchRef}
           className="rail-search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search bays"
+          placeholder="Search bays  /"
           aria-label="Search bays"
         />
         <div className="rail-filters">
@@ -75,7 +92,7 @@ export default function MachineRail({
           return (
             <button
               key={m.id}
-              className={`machine-card ${selectedId === m.id ? "active" : ""}`}
+              className={`machine-card ${selectedId === m.id ? "active" : ""} ${m.status === "offline" ? "offline" : ""}`}
               onClick={() => onSelect(m.id)}
             >
               <span className={`led sev-${m.overall}`} />
@@ -95,9 +112,13 @@ export default function MachineRail({
                     </>
                   )}
                   <span>{relativeSeen(m.last_seen)}</span>
+                  {(m.notes_count ?? 0) > 0 && <span>{m.notes_count} notes</span>}
                 </p>
               </div>
-              <div className={`score-chip sev-${m.overall}`}>{m.health_score}</div>
+              <div className="card-right">
+                <Spark values={m.cpu_spark || []} />
+                <div className={`score-chip sev-${m.overall}`}>{m.health_score}</div>
+              </div>
             </button>
           );
         })}
@@ -105,4 +126,6 @@ export default function MachineRail({
       </div>
     </aside>
   );
-}
+});
+
+export default MachineRail;
