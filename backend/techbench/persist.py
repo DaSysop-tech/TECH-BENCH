@@ -10,9 +10,9 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 from techbench.models import JournalEntry, Machine, MachineSnapshot, ScanDelta, TechNote, TelemetrySample
-from techbench.security import ROOT
+from techbench.security import DATA_DIR, protect_data_parent_if_ours, protect_secret_file
 
-DB_DEFAULT = ROOT / "data" / "bench.sqlite"
+DB_DEFAULT = DATA_DIR / "bench.sqlite"
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -34,8 +34,10 @@ def init_db() -> None:
         return
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    protect_data_parent_if_ours(path)
     conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
+    protect_secret_file(path)
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS kv (
@@ -84,6 +86,7 @@ def init_db() -> None:
         """
     )
     conn.commit()
+    protect_secret_file(path)
     _conn = conn
 
 

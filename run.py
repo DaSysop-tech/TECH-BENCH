@@ -12,12 +12,13 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import uvicorn
 
-from techbench.security import LOOPBACK_HOSTS, TOKEN_FILE, ensure_bench_token
+from techbench.security import TOKEN_FILE, ensure_bench_token, is_loopback_host
 
 if __name__ == "__main__":
+    os.umask(0o077)
     host = os.environ.get("TECHBENCH_HOST", "127.0.0.1")
     port = int(os.environ.get("TECHBENCH_PORT", "8000"))
-    public = host not in LOOPBACK_HOSTS
+    public = not is_loopback_host(host)
     if public and os.environ.get("TECHBENCH_ALLOW_LAN") != "1":
         print(
             "Refusing to bind a non-loopback address.\n"

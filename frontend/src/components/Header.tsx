@@ -13,9 +13,16 @@ export default function Header({
   onHelp: () => void;
 }) {
   const [now, setNow] = useState(() => new Date());
+  const [version, setVersion] = useState("");
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
+  }, []);
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d: { version?: string }) => setVersion(d.version || ""))
+      .catch(() => undefined);
   }, []);
   const worst = summary?.worst;
 
@@ -25,7 +32,7 @@ export default function Header({
         <div className="brand-mark">TB</div>
         <div>
           <h1>TECH-BENCH</h1>
-          <p>Virtual diagnostic workstation</p>
+          <p>Virtual diagnostic workstation{version ? ` · v${version}` : ""}</p>
         </div>
       </div>
       <div className="header-status">

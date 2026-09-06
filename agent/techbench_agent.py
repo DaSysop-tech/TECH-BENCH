@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from techbench.diagnostics.collectors import collect_local_snapshot, collect_local_telemetry  # noqa: E402
-from techbench.security import TOKEN_FILE, assert_safe_bench_url  # noqa: E402
+from techbench.security import TOKEN_FILE, assert_safe_bench_url, is_loopback_host  # noqa: E402
 
 
 def _load_token(explicit: str) -> str:
@@ -44,7 +44,7 @@ def main() -> int:
         return 1
 
     host = (urlparse(base).hostname or "").lower()
-    loopback = host in {"127.0.0.1", "localhost", "::1"}
+    loopback = is_loopback_host(host)
     token = _load_token(args.bench_token)
     if not loopback and not token:
         print("Remote benches require --bench-token (this is not optional).", file=sys.stderr)
