@@ -61,7 +61,7 @@ CI runs pytest plus a frontend typecheck/build on every push.
 
 ## Docker
 
-The image listens on `0.0.0.0` *inside the container* (required for port publish). Keep the published port on loopback:
+The image listens on `0.0.0.0` *inside the container* as an unprivileged user (uid 10001). Keep the published port on loopback:
 
 ```bash
 docker build -t tech-bench .
@@ -89,10 +89,14 @@ Hard defaults:
 
 - Binds **127.0.0.1 only**. A public bind requires `TECHBENCH_ALLOW_LAN=1`.
 - Every API call needs a session cookie or Bearer token. Loopback browsers unlock automatically; anyone else pastes `data/bench.token`.
-- Agents may use HTTP only to localhost. Anything else must be **HTTPS** and must send `--bench-token`.
+- Session cookie is HttpOnly + SameSite=strict. Set `TECHBENCH_COOKIE_SECURE=1` (or serve HTTPS) if you terminate TLS.
+- Agents may use HTTP only to localhost. Anything else must be **HTTPS** and must send `--bench-token`. Hostnames like `127.evil.example` are not treated as loopback.
 - Pairing codes are 40-bit, single-use, 10 minutes, rate-limited per client IP.
 - Playbooks change simulated snapshots only.
 - Process collection stores the executable path, not argv.
 - OpenAPI docs are off unless `TECHBENCH_DEBUG=1`.
+- `data/bench.token` and `data/bench.sqlite` are owner-read/write only (`0600`); `data/` is `0700`.
+- IPv6 loopback Host headers (`[::1]:8000`) are accepted. CORS never allows `*`.
+- The Docker image runs as uid `10001`. Keep the published port on loopback.
 
 Use only on systems you own or are authorized to support.

@@ -28,6 +28,7 @@ from techbench.security import (
     SESSION_COOKIE,
     RateLimiter,
     client_ip,
+    cors_allow_origins,
     drop_session,
     ensure_bench_token,
     host_header_ok,
@@ -36,8 +37,10 @@ from techbench.security import (
     pair_agent_command,
     safe_dist_file,
     same_origin_ok,
+    session_cookie_secure,
     session_ok,
     token_ok,
+    websocket_origin_ok,
 )
 from techbench.store import (
     FLEET_CHANNEL,
@@ -62,14 +65,7 @@ from techbench.store import (
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 DEBUG = os.environ.get("TECHBENCH_DEBUG") == "1"
-CORS_ORIGINS = [
-    o.strip()
-    for o in os.environ.get(
-        "TECHBENCH_CORS",
-        "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:5173,http://localhost:5173",
-    ).split(",")
-    if o.strip()
-]
+CORS_ORIGINS = cors_allow_origins()
 _pair_limit = RateLimiter(10, 60)
 _register_limit = RateLimiter(20, 60)
 _agent_post_limit = RateLimiter(120, 60)
@@ -99,15 +95,21 @@ def _authorized(request: Request) -> bool:
     return session_ok(request.cookies.get(SESSION_COOKIE))
 
 
-def _set_session_cookie(response: Response, sid: str) -> None:
+def _cookie_flags(request: Request) -> dict:
+    return {
+        "httponly": True,
+        "samesite": "strict",
+        "secure": session_cookie_secure(https=request.url.scheme == "https"),
+        "path": "/",
+    }
+
+
+def _set_session_cookie(response: Response, request: Request, sid: str) -> None:
     response.set_cookie(
         SESSION_COOKIE,
         sid,
-        httponly=True,
-        samesite="strict",
-        secure=False,
         max_age=12 * 3600,
-        path="/",
+        **_cookie_flags(request),
     )
 
 
@@ -170,7 +172,7 @@ def api_session(body: SessionIn, request: Request, response: Response):
         raise HTTPException(429, "Too many login attempts")
     if not token_ok(body.token.strip(), _bench_token()):
         raise HTTPException(401, "Bad token")
-    _set_session_cookie(response, issue_session())
+    _set_session_cookie(response, request, issue_session())
     return {"ok": True}
 
 
@@ -186,14 +188,14 @@ def api_session_loopback(request: Request, response: Response):
         raise HTTPException(403, "Bad origin")
     if not _session_limit.hit(ip):
         raise HTTPException(429, "Too many login attempts")
-    _set_session_cookie(response, issue_session())
+    _set_session_cookie(response, request, issue_session())
     return {"ok": True}
 
 
 @app.post("/api/session/logout")
 def api_session_logout(request: Request, response: Response):
     drop_session(request.cookies.get(SESSION_COOKIE))
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(SESSION_COOKIE, **_cookie_flags(request))
     return {"ok": True}
 
 
@@ -335,13 +337,21 @@ async def api_agent_telemetry(body: AgentTelemetryIn, request: Request):
     return {"ok": True, "machine_id": m.id}
 
 
-@app.websocket("/api/ws/machines/{machine_id}")
-async def ws_machine(websocket: WebSocket, machine_id: str):
+def _ws_authorized(websocket: WebSocket) -> bool:
+    if not host_header_ok(websocket.headers.get("host")):
+        return False
+    if not websocket_origin_ok(websocket.headers.get("origin")):
+        return False
     token = _bench_token()
     auth = websocket.headers.get("authorization", "")
     bearer_ok = auth.startswith("Bearer ") and token_ok(auth[7:].strip(), token)
     cookie_ok = session_ok(websocket.cookies.get(SESSION_COOKIE))
-    if not bearer_ok and not cookie_ok:
+    return bearer_ok or cookie_ok
+
+
+@app.websocket("/api/ws/machines/{machine_id}")
+async def ws_machine(websocket: WebSocket, machine_id: str):
+    if not _ws_authorized(websocket):
         await websocket.close(code=4401)
         return
     if machine_id not in state.machines:
@@ -371,11 +381,7 @@ async def ws_machine(websocket: WebSocket, machine_id: str):
 
 @app.websocket("/api/ws/fleet")
 async def ws_fleet(websocket: WebSocket):
-    token = _bench_token()
-    auth = websocket.headers.get("authorization", "")
-    bearer_ok = auth.startswith("Bearer ") and token_ok(auth[7:].strip(), token)
-    cookie_ok = session_ok(websocket.cookies.get(SESSION_COOKIE))
-    if not bearer_ok and not cookie_ok:
+    if not _ws_authorized(websocket):
         await websocket.close(code=4401)
         return
     await websocket.accept()

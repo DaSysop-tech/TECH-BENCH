@@ -19,10 +19,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TECHBENCH_ALLOW_LAN=1 \
     TECHBENCH_PORT=8000
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && useradd --system --uid 10001 --no-create-home --home-dir /app techbench
 COPY backend ./backend
 COPY agent ./agent
 COPY run.py .
 COPY --from=ui /ui/dist ./frontend/dist
+RUN mkdir -p /app/data && chown techbench:techbench /app/data
+USER techbench
 EXPOSE 8000
 CMD ["python", "run.py"]
