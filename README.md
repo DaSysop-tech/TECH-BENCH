@@ -10,6 +10,7 @@ This is not unattended remote access. Machines join the bench through a short-li
 - Runs a shared **diagnostic engine** (SMART pre-fail, disk full, memory leaks, thermal throttle, APIPA/DNS/loss, lure-named processes, PSU rails, event-log correlation).
 - Streams **1 Hz telemetry** over WebSocket onto an oscilloscope strip.
 - Lets you click subsystems on an ATX schematic, run a staged full scan, and apply playbooks on simulated machines.
+- Search/filter occupied bays, copy a pairing command aimed at this bench, and export a markdown service-tag report.
 
 ## Run locally
 
@@ -53,6 +54,19 @@ Codes look like `A1B2C-D3E4F`. Remote (non-localhost) benches also require `--be
 source .venv/bin/activate
 PYTHONPATH=backend pytest -q
 ```
+
+CI runs pytest plus a frontend typecheck/build on every push.
+
+## Docker
+
+The image listens on `0.0.0.0` *inside the container* (required for port publish). Keep the published port on loopback:
+
+```bash
+docker build -t tech-bench .
+docker run --rm -p 127.0.0.1:8000:8000 tech-bench
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Do not publish `0.0.0.0:8000:8000` unless you also understand the LAN opt-in and token gate.
 
 ## Layout
 

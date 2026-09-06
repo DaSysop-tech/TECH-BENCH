@@ -67,3 +67,19 @@ def test_agent_refuses_plaintext_remote_url():
         assert_safe_bench_url("file:///etc/passwd")
     assert assert_safe_bench_url("http://127.0.0.1:8000") == "http://127.0.0.1:8000"
     assert assert_safe_bench_url("https://bench.example").startswith("https://")
+
+
+def test_pair_agent_command_uses_loopback_http():
+    from techbench.security import pair_agent_command
+
+    cmd = pair_agent_command("127.0.0.1:8000", "A1B2C-D3E4F")
+    assert "--server http://127.0.0.1:8000" in cmd
+    assert "--code A1B2C-D3E4F" in cmd
+    assert "data/bench.token" in cmd
+    dirty = pair_agent_command("evil.example; rm -rf /", "A1B2C-D3E4F")
+    assert "evil.example" not in dirty
+    assert "http://127.0.0.1:8000" in dirty
+
+
+def test_anonymous_report_is_denied(anon):
+    assert anon.get("/api/machines/sim-frontdesk/report").status_code == 401

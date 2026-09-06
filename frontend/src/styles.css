@@ -208,6 +208,59 @@ input {
   gap: 8px;
 }
 
+.rail-controls {
+  padding: 8px 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rail-search {
+  width: 100%;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.rail-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  border: 1px solid var(--line);
+  background: var(--inset);
+  color: var(--muted);
+  padding: 3px 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.chip.active {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.finding-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px !important;
+  font-family: var(--font-mono);
+  font-size: 10px !important;
+}
+
+.copy-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .machine-card {
   text-align: left;
   border: 1px solid var(--line);
@@ -611,6 +664,11 @@ input {
   font-size: 32px;
   letter-spacing: 0.2em;
   color: var(--amber);
+}
+
+.modal code {
+  font-family: var(--font-mono);
+  color: var(--text);
 }
 
 .empty {

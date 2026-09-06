@@ -49,6 +49,22 @@ export async function fetchTelemetry(id: string): Promise<TelemetrySample[]> {
   return r.json();
 }
 
+export async function fetchReport(id: string): Promise<string> {
+  const r = await api(`/api/machines/${id}/report`);
+  if (!r.ok) throw new Error("Report failed");
+  return r.text();
+}
+
+export function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function startScan(id: string): Promise<Machine> {
   const r = await api(`/api/machines/${id}/scan`, { method: "POST" });
   if (!r.ok) throw new Error("Scan failed");
@@ -73,6 +89,12 @@ export async function createPairCode(alias: string, location: string) {
   });
   if (!r.ok) throw new Error("Could not mint pairing code");
   return r.json() as Promise<{ code: string; agent_command: string; expires_in_sec: number }>;
+}
+
+export function agentCommandFor(code: string): string {
+  const loopback = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const tokenArg = loopback ? '"$(cat data/bench.token)"' : "BENCH_TOKEN";
+  return `python agent/techbench_agent.py --server ${location.origin} --code ${code} --bench-token ${tokenArg}`;
 }
 
 export function openMachineSocket(id: string): WebSocket {

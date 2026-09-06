@@ -73,6 +73,15 @@ class BenchState:
 state = BenchState()
 
 
+def _score_machine(machine: Machine) -> None:
+    machine.overall = overall_severity(machine.findings)
+    machine.health_score = health_score(machine.findings)
+    active = [f for f in machine.findings if not f.remediated]
+    machine.open_critical = sum(1 for f in active if f.severity == Severity.critical)
+    machine.open_warning = sum(1 for f in active if f.severity == Severity.warning)
+    machine.open_info = sum(1 for f in active if f.severity == Severity.info)
+
+
 def _decorate(machine: Machine, snapshot: MachineSnapshot, findings: list[Finding] | None = None) -> Machine:
     findings = findings if findings is not None else diagnose(snapshot)
     rem = state.remediations.get(machine.id, set())
@@ -91,8 +100,7 @@ def _decorate(machine: Machine, snapshot: MachineSnapshot, findings: list[Findin
     findings.sort(key=lambda f: (1 if f.remediated else 0, rank[f.severity], -f.confidence, f.title))
     machine.snapshot = snapshot
     machine.findings = findings
-    machine.overall = overall_severity(findings)
-    machine.health_score = health_score(findings)
+    _score_machine(machine)
     machine.hostname = snapshot.inventory.hostname
     machine.os = snapshot.inventory.os
     machine.last_seen = time.time()
@@ -265,8 +273,7 @@ def remediate(machine_id: str, finding_id: str) -> Machine:
         for f in m.findings:
             if f.id == finding_id:
                 f.remediated = True
-        m.overall = overall_severity(m.findings)
-        m.health_score = health_score(m.findings)
+        _score_machine(m)
     return m
 
 

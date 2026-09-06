@@ -1,5 +1,6 @@
-import { Fragment } from "react";
-import type { ComponentHealth, Finding, Machine, ToolId } from "../types";
+import { Fragment, useState } from "react";
+import { downloadText, fetchReport } from "../api";
+import type { ComponentHealth, Finding, Machine, Severity, ToolId } from "../types";
 
 function ringColor(score: number) {
   if (score < 50) return "#ff5a4f";
@@ -18,44 +19,62 @@ function Findings({
   onRemediate: (id: string) => void;
   busy: boolean;
 }) {
-  const shown = findings.filter((f) => !filterComponent || f.component === filterComponent);
-  if (!shown.length) {
-    return <p className="empty">No findings on this subsystem. The bay is clean.</p>;
-  }
+  const [sev, setSev] = useState<"all" | Severity>("all");
+  const shown = findings.filter((f) => {
+    if (filterComponent && f.component !== filterComponent) return false;
+    if (sev !== "all" && f.severity !== sev) return false;
+    return true;
+  });
   return (
     <>
-      {shown.map((f) => (
-        <article key={f.id} className={`finding ${f.remediated ? "remediated" : ""}`}>
-          <h4 className={`sev-${f.severity}`}>
-            <span className="badge">{f.severity}</span> {f.title}
-          </h4>
-          <p className="summary">{f.summary}</p>
-          {f.evidence.length > 0 && (
-            <ul className="ev">
-              {f.evidence.map((e) => (
-                <li key={e}>{e}</li>
-              ))}
-            </ul>
-          )}
-          {f.recommendations.length > 0 && (
-            <ol className="recs">
-              {f.recommendations.map((e) => (
-                <li key={e}>{e}</li>
-              ))}
-            </ol>
-          )}
-          <div className="finding-actions">
-            <span>confidence {(f.confidence * 100).toFixed(0)}%</span>
-            <button
-              className="btn"
-              disabled={f.remediated || busy}
-              onClick={() => onRemediate(f.id)}
-            >
-              {f.remediated ? "Applied" : "Apply playbook"}
-            </button>
-          </div>
-        </article>
-      ))}
+      <div className="rail-filters" style={{ marginBottom: 10 }}>
+        {(["all", "critical", "warning", "info"] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            className={`chip ${sev === id ? "active" : ""}`}
+            onClick={() => setSev(id)}
+          >
+            {id}
+          </button>
+        ))}
+      </div>
+      {!shown.length ? (
+        <p className="empty">No findings on this subsystem. The bay is clean.</p>
+      ) : (
+        shown.map((f) => (
+          <article key={f.id} className={`finding ${f.remediated ? "remediated" : ""}`}>
+            <h4 className={`sev-${f.severity}`}>
+              <span className="badge">{f.severity}</span> {f.title}
+            </h4>
+            <p className="summary">{f.summary}</p>
+            {f.evidence.length > 0 && (
+              <ul className="ev">
+                {f.evidence.map((e) => (
+                  <li key={e}>{e}</li>
+                ))}
+              </ul>
+            )}
+            {f.recommendations.length > 0 && (
+              <ol className="recs">
+                {f.recommendations.map((e) => (
+                  <li key={e}>{e}</li>
+                ))}
+              </ol>
+            )}
+            <div className="finding-actions">
+              <span>confidence {(f.confidence * 100).toFixed(0)}%</span>
+              <button
+                className="btn"
+                disabled={f.remediated || busy}
+                onClick={() => onRemediate(f.id)}
+              >
+                {f.remediated ? "Applied" : "Apply playbook"}
+              </button>
+            </div>
+          </article>
+        ))
+      )}
     </>
   );
 }
@@ -124,9 +143,27 @@ export default function Scope({
   onRemediate: (id: string) => void;
   busy: boolean;
 }) {
+  const [reportState, setReportState] = useState<"idle" | "busy" | "copied" | "error">("idle");
   if (!machine) return <section className="scope" />;
   const snap = machine.snapshot;
   const component = snap?.components.find((c) => c.id === selectedComponent);
+
+  async function onExport(copyOnly: boolean) {
+    setReportState("busy");
+    try {
+      const text = await fetchReport(machine.id);
+      if (copyOnly) {
+        await navigator.clipboard.writeText(text);
+        setReportState("copied");
+        window.setTimeout(() => setReportState("idle"), 1500);
+        return;
+      }
+      downloadText(`techbench-${machine.id}.md`, text);
+      setReportState("idle");
+    } catch {
+      setReportState("error");
+    }
+  }
 
   return (
     <section className="scope">
@@ -154,6 +191,15 @@ export default function Scope({
             <p>
               {machine.findings.filter((f) => !f.remediated).length} open findings
             </p>
+            <div className="copy-row">
+              <button className="btn" type="button" disabled={reportState === "busy"} onClick={() => onExport(false)}>
+                Export report
+              </button>
+              <button className="btn" type="button" disabled={reportState === "busy"} onClick={() => onExport(true)}>
+                {reportState === "copied" ? "Copied" : "Copy report"}
+              </button>
+            </div>
+            {reportState === "error" && <p className="sev-critical">Could not build report.</p>}
           </div>
         </div>
 
