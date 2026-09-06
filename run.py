@@ -12,13 +12,23 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import uvicorn
 
+from techbench.security import LOOPBACK_HOSTS, TOKEN_FILE, ensure_bench_token
+
 if __name__ == "__main__":
     host = os.environ.get("TECHBENCH_HOST", "127.0.0.1")
     port = int(os.environ.get("TECHBENCH_PORT", "8000"))
-    if host not in {"127.0.0.1", "localhost", "::1"} and not os.environ.get("TECHBENCH_TOKEN"):
+    public = host not in LOOPBACK_HOSTS
+    if public and os.environ.get("TECHBENCH_ALLOW_LAN") != "1":
         print(
-            "WARNING: TECHBENCH_HOST is not loopback and TECHBENCH_TOKEN is unset. "
-            "Anyone who can reach the port can drive the bench.",
+            "Refusing to bind a non-loopback address.\n"
+            "This bench is a local console. To opt in to LAN listen:\n"
+            "  TECHBENCH_ALLOW_LAN=1 TECHBENCH_HOST=0.0.0.0 python run.py",
             file=sys.stderr,
         )
+        raise SystemExit(2)
+    ensure_bench_token()
+    print(f"TECH-BENCH on http://{host}:{port}", flush=True)
+    print(f"Loopback browser sessions unlock automatically. Token file: {TOKEN_FILE}", flush=True)
+    if public:
+        print("LAN bind enabled. Agents must pass --bench-token.", flush=True)
     uvicorn.run("techbench.main:app", host=host, port=port, reload=False)

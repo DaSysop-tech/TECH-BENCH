@@ -40,12 +40,12 @@ Vite proxies `/api` (including WebSocket) to port 8000.
 On the bench, click **Pair remote PC** and copy the code. On the remote machine (operator-consented):
 
 ```bash
-python agent/techbench_agent.py --server http://BENCH_HOST:8000 --code ABCDE-FGHIJ
+python agent/techbench_agent.py --server http://127.0.0.1:8000 --code ABCDE-FGHIJ --bench-token "$(cat data/bench.token)"
 ```
 
 The agent uploads inventory + a diagnostic snapshot, then heartbeats telemetry. It does not open a shell or install persistence.
 
-Codes look like `A1B2C-D3E4F`. If the bench was started with `TECHBENCH_TOKEN`, also pass `--bench-token`.
+Codes look like `A1B2C-D3E4F`. Remote (non-localhost) benches also require `--bench-token`.
 
 ## Tests
 
@@ -66,12 +66,16 @@ PYTHONPATH=backend pytest -q
 
 ## Safety
 
-Use only on systems you own or are authorized to support. Pairing codes expire. Simulated playbooks never execute arbitrary commands.
+This is a **local technician console**, not internet SaaS. Cloning it from GitHub does not open a backdoor: the agent never runs commands, never installs persistence, and never opens a shell.
 
-The bench is a **local technician console**, not a public SaaS:
+Hard defaults:
 
-- `python run.py` binds **127.0.0.1** by default. Set `TECHBENCH_HOST=0.0.0.0` only on a trusted LAN.
-- Optional `TECHBENCH_TOKEN` requires `Authorization: Bearer …` on `/api/*` (except `/api/health`). Store the same value in the UI via `localStorage.techbenchToken`.
-- Pairing codes are 40-bit, single-use, 10 minutes. Mint and register endpoints are rate-limited.
-- The agent is read-mostly: no reverse shell, no persistence, no argv collection (executable path only).
-- Playbooks mutate simulated snapshots only; they do not run commands on live or remote PCs.
+- Binds **127.0.0.1 only**. A public bind requires `TECHBENCH_ALLOW_LAN=1`.
+- Every API call needs a session cookie or Bearer token. Loopback browsers unlock automatically; anyone else pastes `data/bench.token`.
+- Agents may use HTTP only to localhost. Anything else must be **HTTPS** and must send `--bench-token`.
+- Pairing codes are 40-bit, single-use, 10 minutes, rate-limited per client IP.
+- Playbooks change simulated snapshots only.
+- Process collection stores the executable path, not argv.
+- OpenAPI docs are off unless `TECHBENCH_DEBUG=1`.
+
+Use only on systems you own or are authorized to support.

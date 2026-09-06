@@ -1,39 +1,62 @@
 import type { Machine, TelemetrySample } from "./types";
 
+const CLIENT_HDR = { "X-Techbench": "1" };
+
 function benchHeaders(json = false): HeadersInit {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...CLIENT_HDR };
   if (json) headers["Content-Type"] = "application/json";
-  const token = localStorage.getItem("techbenchToken") || "";
-  if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }
 
+async function api(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(path, { credentials: "include", ...init, headers: { ...benchHeaders(), ...(init.headers || {}) } });
+}
+
+export async function unlockLoopback(): Promise<boolean> {
+  const r = await api("/api/session/loopback", { method: "POST" });
+  return r.ok;
+}
+
+export async function unlockWithToken(token: string): Promise<boolean> {
+  const r = await api("/api/session", {
+    method: "POST",
+    headers: benchHeaders(true),
+    body: JSON.stringify({ token }),
+  });
+  return r.ok;
+}
+
 export async function fetchMachines(): Promise<Machine[]> {
-  const r = await fetch("/api/machines", { headers: benchHeaders() });
+  const r = await api("/api/machines");
+  if (r.status === 401) {
+    const err = new Error("unauthorized");
+    (err as Error & { status: number }).status = 401;
+    throw err;
+  }
   if (!r.ok) throw new Error("Failed to list machines");
   return r.json();
 }
 
 export async function fetchMachine(id: string): Promise<Machine> {
-  const r = await fetch(`/api/machines/${id}`, { headers: benchHeaders() });
+  const r = await api(`/api/machines/${id}`);
   if (!r.ok) throw new Error("Machine not found");
   return r.json();
 }
 
 export async function fetchTelemetry(id: string): Promise<TelemetrySample[]> {
-  const r = await fetch(`/api/machines/${id}/telemetry?limit=180`, { headers: benchHeaders() });
+  const r = await api(`/api/machines/${id}/telemetry?limit=180`);
   if (!r.ok) return [];
   return r.json();
 }
 
 export async function startScan(id: string): Promise<Machine> {
-  const r = await fetch(`/api/machines/${id}/scan`, { method: "POST", headers: benchHeaders() });
+  const r = await api(`/api/machines/${id}/scan`, { method: "POST" });
   if (!r.ok) throw new Error("Scan failed");
   return r.json();
 }
 
 export async function remediate(id: string, findingId: string): Promise<Machine> {
-  const r = await fetch(`/api/machines/${id}/remediate`, {
+  const r = await api(`/api/machines/${id}/remediate`, {
     method: "POST",
     headers: benchHeaders(true),
     body: JSON.stringify({ finding_id: findingId }),
@@ -43,7 +66,7 @@ export async function remediate(id: string, findingId: string): Promise<Machine>
 }
 
 export async function createPairCode(alias: string, location: string) {
-  const r = await fetch("/api/pair", {
+  const r = await api("/api/pair", {
     method: "POST",
     headers: benchHeaders(true),
     body: JSON.stringify({ alias, location }),
@@ -54,7 +77,5 @@ export async function createPairCode(alias: string, location: string) {
 
 export function openMachineSocket(id: string): WebSocket {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const token = localStorage.getItem("techbenchToken") || "";
-  const q = token ? `?access_token=${encodeURIComponent(token)}` : "";
-  return new WebSocket(`${proto}://${location.host}/api/ws/machines/${id}${q}`);
+  return new WebSocket(`${proto}://${location.host}/api/ws/machines/${id}`);
 }

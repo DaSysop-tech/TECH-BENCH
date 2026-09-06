@@ -256,6 +256,7 @@ def remediate(machine_id: str, finding_id: str) -> Machine:
     if not m.snapshot:
         raise RuntimeError("No snapshot")
     state.remediations[machine_id].add(finding_id)
+    # Simulated tickets only. Never run OS commands on local or remote PCs.
     if m.kind == MachineKind.simulated:
         snap = apply_remediation(machine_id, finding_id, m.snapshot)
         state.sim_overrides[machine_id] = snap
