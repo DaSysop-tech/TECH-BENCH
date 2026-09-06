@@ -8,8 +8,31 @@ function benchHeaders(json = false): HeadersInit {
   return headers;
 }
 
+let recovering: Promise<boolean> | null = null;
+
+function recoverLoopbackSession(): Promise<boolean> {
+  if (!recovering) {
+    recovering = fetch("/api/session/loopback", {
+      method: "POST",
+      credentials: "include",
+      headers: CLIENT_HDR,
+    })
+      .then((r) => r.ok)
+      .finally(() => {
+        recovering = null;
+      });
+  }
+  return recovering;
+}
+
 async function api(path: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(path, { credentials: "include", ...init, headers: { ...benchHeaders(), ...(init.headers || {}) } });
+  const run = () =>
+    fetch(path, { credentials: "include", ...init, headers: { ...benchHeaders(), ...(init.headers || {}) } });
+  let r = await run();
+  if (r.status === 401 && !path.startsWith("/api/session") && (await recoverLoopbackSession())) {
+    r = await run();
+  }
+  return r;
 }
 
 export async function unlockLoopback(): Promise<boolean> {
@@ -92,7 +115,7 @@ export async function createPairCode(alias: string, location: string) {
 }
 
 export function agentCommandFor(code: string): string {
-  const loopback = ["localhost", "127.0.0.1"].includes(location.hostname);
+  const loopback = ["localhost", "127.0.0.1", "::1"].includes(location.hostname);
   const tokenArg = loopback ? '"$(cat data/bench.token)"' : "BENCH_TOKEN";
   return `python agent/techbench_agent.py --server ${location.origin} --code ${code} --bench-token ${tokenArg}`;
 }
