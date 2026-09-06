@@ -485,13 +485,20 @@ input {
 
 .kv {
   display: grid;
-  grid-template-columns: 110px 1fr;
+  grid-template-columns: 92px minmax(0, 1fr);
   gap: 4px 8px;
   font-size: 12px;
 }
 
 .kv dt {
   color: var(--muted);
+}
+
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .telemetry {

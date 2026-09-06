@@ -44,14 +44,14 @@ def main() -> int:
             return 1
         token = reg.json()["token"]
         machine = reg.json()["machine"]
-        print(f"Paired as {machine['hostname']} ({machine['id']})")
+        print(f"Paired as {machine['hostname']} ({machine['id']})", flush=True)
 
         posted = client.post(
             f"{base}/api/agent/snapshot",
             json={"token": token, "snapshot": snap.model_dump(mode="json")},
         )
         posted.raise_for_status()
-        print("Initial diagnostic snapshot uploaded.")
+        print("Initial diagnostic snapshot uploaded.", flush=True)
 
         while True:
             sample = collect_local_telemetry()

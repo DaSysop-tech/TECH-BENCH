@@ -40,7 +40,7 @@ Vite proxies `/api` (including WebSocket) to port 8000.
 On the bench, click **Pair remote PC** and copy the code. On the remote machine (operator-consented):
 
 ```bash
-python agent/techbench_agent.py --server http://<bench-host>:8000 --code ABC-DEF
+python agent/techbench_agent.py --server http://BENCH_HOST:8000 --code ABC-DEF
 ```
 
 The agent uploads inventory + a diagnostic snapshot, then heartbeats telemetry. It does not open a shell or install persistence.

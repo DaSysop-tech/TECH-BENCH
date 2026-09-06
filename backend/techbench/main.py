@@ -118,7 +118,7 @@ def api_demo_fleet():
 @app.post("/api/pair", response_model=PairResponse)
 def api_pair(body: PairRequest):
     code = create_pair_code(body.alias, body.location)
-    cmd = f"python agent/techbench_agent.py --server http://<bench-host>:8000 --code {code}"
+    cmd = f"python agent/techbench_agent.py --server http://BENCH_HOST:8000 --code {code}"
     return PairResponse(code=code, agent_command=cmd)
 
 
