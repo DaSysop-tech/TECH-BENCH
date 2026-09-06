@@ -200,6 +200,7 @@ export default function App() {
       if (e.key === "Escape") {
         setHelp(false);
         setPairing(false);
+        searchRef.current?.blur();
         return;
       }
       if (typing) return;
@@ -277,7 +278,7 @@ export default function App() {
         <div className="modal-back" onClick={() => setHelp(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Bench keys</h2>
-            <p>j / k next bay · n next ticket · s full scan · / search · p pair · 1–8 tools · ? this card · Esc close</p>
+            <p>j / k next bay · n next ticket · s full scan · / search · p pair · 1-8 tools · ? this card · Esc close</p>
             <button className="btn" type="button" onClick={() => setHelp(false)}>
               Close
             </button>
