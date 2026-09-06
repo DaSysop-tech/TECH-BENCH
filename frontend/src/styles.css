@@ -693,6 +693,78 @@ input {
   padding: 1px 5px;
 }
 
+.card-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.spark {
+  width: 52px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.machine-card.offline {
+  opacity: 0.55;
+}
+
+.toast {
+  position: fixed;
+  right: 18px;
+  bottom: 150px;
+  z-index: 30;
+  background: #3a2a12;
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  padding: 10px 14px;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  box-shadow: var(--shadow);
+}
+
+.delta-banner {
+  margin: 8px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--info);
+}
+
+.note-form {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.note-form textarea {
+  background: var(--inset);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 8px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.inspector-h {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+
+.part.crit-pulse rect,
+.part.crit-pulse circle {
+  animation: critpulse 1.6s ease-in-out infinite;
+}
+
+@keyframes critpulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.35); }
+}
+
 @media (max-width: 1100px) {
   .workspace {
     grid-template-columns: 220px 1fr;

@@ -9,6 +9,7 @@ const TOOLS: { id: ToolId; label: string }[] = [
   { id: "storage", label: "SMART" },
   { id: "thermals", label: "Thermal" },
   { id: "events", label: "Event log" },
+  { id: "journal", label: "Journal" },
 ];
 
 export default function ToolRack({

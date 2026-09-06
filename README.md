@@ -11,6 +11,8 @@ This is not unattended remote access. Machines join the bench through a short-li
 - Streams **1 Hz telemetry** over WebSocket onto an oscilloscope strip.
 - Lets you click subsystems on an ATX schematic, run a staged full scan, and apply playbooks on simulated machines.
 - Search/filter occupied bays, copy a pairing command aimed at this bench, and export a markdown service-tag report.
+- **Persists** paired remotes, playbook state, notes, and the finding journal in `data/bench.sqlite` so the bench survives a restart.
+- Fleet triage: next-ticket, keyboard shortcuts (`?`), CPU sparklines, scan deltas, technician notes.
 
 ## Run locally
 
@@ -63,7 +65,7 @@ The image listens on `0.0.0.0` *inside the container* (required for port publish
 
 ```bash
 docker build -t tech-bench .
-docker run --rm -p 127.0.0.1:8000:8000 tech-bench
+docker run --rm -p 127.0.0.1:8000:8000 -v techbench-data:/app/data tech-bench
 ```
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Do not publish `0.0.0.0:8000:8000` unless you also understand the LAN opt-in and token gate.
@@ -72,6 +74,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Do not publish `0.0.0.0:800
 
 | Path | Role |
 | --- | --- |
+| `backend/techbench/persist.py` | SQLite bench memory |
 | `backend/techbench/diagnostics/` | Collectors + rule engine |
 | `backend/techbench/sim/` | Demo fleet with planted faults |
 | `backend/techbench/main.py` | FastAPI + WebSocket |

@@ -1,6 +1,6 @@
-import { Fragment, useState } from "react";
-import { downloadText, fetchReport } from "../api";
-import type { ComponentHealth, Finding, Machine, Severity, ToolId } from "../types";
+import { Fragment, FormEvent, useEffect, useState } from "react";
+import { addNote, downloadText, fetchHistory, fetchReport } from "../api";
+import type { BayHistory, ComponentHealth, Finding, Machine, Severity, ToolId } from "../types";
 
 function ringColor(score: number) {
   if (score < 50) return "#ff5a4f";
@@ -201,6 +201,12 @@ export default function Scope({
               </button>
             </div>
             {reportState === "error" && <p className="sev-critical">Could not build report.</p>}
+            {machine.last_delta && (
+              <p className="delta-banner">
+                Last scan {machine.last_delta.score_before}→{machine.last_delta.score_after}
+                {" · "}+{machine.last_delta.appeared.length}/−{machine.last_delta.cleared.length}
+              </p>
+            )}
           </div>
         </div>
 
@@ -304,8 +310,90 @@ export default function Scope({
           </ul>
         )}
 
+        {tool === "journal" && <JournalPane machineId={machine.id} tool={tool} />}
+
         <Inspector component={component} />
       </div>
     </section>
+  );
+}
+
+function JournalPane({
+  machineId,
+  tool,
+}: {
+  machineId: string;
+  tool: ToolId;
+}) {
+  const [hist, setHist] = useState<BayHistory | null>(null);
+  const [body, setBody] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    fetchHistory(machineId).then(setHist).catch(() => setHist(null));
+  }, [machineId, tool]);
+
+  async function onNote(e: FormEvent) {
+    e.preventDefault();
+    setErr("");
+    try {
+      await addNote(machineId, body);
+      setBody("");
+      setHist(await fetchHistory(machineId));
+    } catch {
+      setErr("Could not save note.");
+    }
+  }
+
+  if (!hist) return <p className="empty">Loading journal…</p>;
+  return (
+    <div>
+      <h4 className="inspector-h">Scan log</h4>
+      {hist.scans.length === 0 && <p className="empty">No scans recorded yet.</p>}
+      {hist.scans
+        .slice()
+        .reverse()
+        .map((s) => (
+          <p key={s.ts} className="empty">
+            score {s.score_before} → {s.score_after} · +{s.appeared.length} / −{s.cleared.length} · open {s.still_open}
+          </p>
+        ))}
+      <h4 className="inspector-h">Journal</h4>
+      {hist.journal.length === 0 && <p className="empty">No journal entries yet.</p>}
+      <ul className="ev">
+        {hist.journal
+          .slice()
+          .reverse()
+          .map((j, i) => (
+            <li key={`${j.ts}-${i}`}>
+              {j.action} {j.severity ? `[${j.severity}] ` : ""}
+              {j.title || j.finding_id}
+              {j.detail ? ` — ${j.detail}` : ""}
+            </li>
+          ))}
+      </ul>
+      <h4 className="inspector-h">Technician notes</h4>
+      {hist.notes.length === 0 && <p className="empty">No notes on this bay.</p>}
+      <ul className="ev">
+        {hist.notes.map((n) => (
+          <li key={n.id}>{n.body}</li>
+        ))}
+      </ul>
+      <form onSubmit={onNote} className="note-form">
+        <label htmlFor="note">Add note</label>
+        <textarea
+          id="note"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          maxLength={2000}
+          rows={3}
+          required
+        />
+        {err && <p className="sev-critical">{err}</p>}
+        <button className="btn" type="submit">
+          Pin note
+        </button>
+      </form>
+    </div>
   );
 }

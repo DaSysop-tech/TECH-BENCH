@@ -114,6 +114,25 @@ def render_markdown_report(machine: Machine) -> str:
         for finding in closed:
             lines.append(f"- ~~{_plain(finding.title)}~~ (`{_plain(finding.id)}`)")
 
+    if machine.last_delta:
+        d = machine.last_delta
+        lines.extend(
+            [
+                "",
+                "## Last scan",
+                "",
+                f"- Score {d.score_before} → {d.score_after}",
+                f"- Appeared: {len(d.appeared)}",
+                f"- Cleared: {len(d.cleared)}",
+                f"- Still open: {d.still_open}",
+            ]
+        )
+
+    if machine.notes:
+        lines.extend(["", "## Technician notes", ""])
+        for note in machine.notes[-12:]:
+            lines.append(f"- {_plain(note.body)}")
+
     lines.extend(
         [
             "",

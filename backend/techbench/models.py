@@ -120,6 +120,36 @@ class MachineSnapshot(BaseModel):
     startup_count: int | None = Field(default=None, ge=0, le=10_000)
 
 
+class TechNote(BaseModel):
+    id: str = Field(max_length=32)
+    machine_id: str = Field(max_length=64)
+    ts: float
+    body: str = Field(max_length=2000)
+
+
+class NoteIn(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class JournalEntry(BaseModel):
+    machine_id: str = Field(max_length=64)
+    ts: float
+    action: str = Field(max_length=24)
+    finding_id: str = Field(default="", max_length=96)
+    title: str = Field(default="", max_length=200)
+    severity: Severity | None = None
+    detail: str = Field(default="", max_length=400)
+
+
+class ScanDelta(BaseModel):
+    ts: float
+    score_before: int = Field(ge=0, le=100)
+    score_after: int = Field(ge=0, le=100)
+    appeared: list[str] = Field(default_factory=list, max_length=40)
+    cleared: list[str] = Field(default_factory=list, max_length=40)
+    still_open: int = Field(default=0, ge=0)
+
+
 class Machine(BaseModel):
     id: str = Field(max_length=64)
     hostname: str = Field(max_length=128)
@@ -137,6 +167,10 @@ class Machine(BaseModel):
     open_critical: int = Field(default=0, ge=0)
     open_warning: int = Field(default=0, ge=0)
     open_info: int = Field(default=0, ge=0)
+    notes: list[TechNote] = Field(default_factory=list, max_length=40)
+    last_delta: ScanDelta | None = None
+    cpu_spark: list[float] = Field(default_factory=list, max_length=48)
+    notes_count: int = Field(default=0, ge=0)
 
 
 class PairRequest(BaseModel):

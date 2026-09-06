@@ -1,4 +1,4 @@
-import type { Machine, TelemetrySample } from "./types";
+import type { BayHistory, FleetSummary, Machine, TelemetrySample } from "./types";
 
 const CLIENT_HDR = { "X-Techbench": "1" };
 
@@ -100,4 +100,38 @@ export function agentCommandFor(code: string): string {
 export function openMachineSocket(id: string): WebSocket {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   return new WebSocket(`${proto}://${location.host}/api/ws/machines/${id}`);
+}
+
+export function openFleetSocket(): WebSocket {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  return new WebSocket(`${proto}://${location.host}/api/ws/fleet`);
+}
+
+export async function fetchFleet(): Promise<FleetSummary> {
+  const r = await api("/api/fleet");
+  if (!r.ok) throw new Error("Fleet failed");
+  return r.json();
+}
+
+export async function fetchNextTicket(after?: string | null): Promise<Machine> {
+  const q = after ? `?after=${encodeURIComponent(after)}` : "";
+  const r = await api(`/api/fleet/next${q}`);
+  if (!r.ok) throw new Error("No next ticket");
+  return r.json();
+}
+
+export async function fetchHistory(id: string): Promise<BayHistory> {
+  const r = await api(`/api/machines/${id}/history`);
+  if (!r.ok) throw new Error("History failed");
+  return r.json();
+}
+
+export async function addNote(id: string, body: string) {
+  const r = await api(`/api/machines/${id}/notes`, {
+    method: "POST",
+    headers: benchHeaders(true),
+    body: JSON.stringify({ body }),
+  });
+  if (!r.ok) throw new Error("Note failed");
+  return r.json();
 }

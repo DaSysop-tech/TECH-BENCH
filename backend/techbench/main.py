@@ -15,6 +15,7 @@ from techbench.models import (
     AgentRegister,
     AgentSnapshotIn,
     AgentTelemetryIn,
+    NoteIn,
     PairRequest,
     PairResponse,
     RemediateIn,
@@ -39,16 +40,22 @@ from techbench.security import (
     token_ok,
 )
 from techbench.store import (
+    FLEET_CHANNEL,
+    add_note,
+    boot_bench,
     create_pair_code,
+    fleet_summary,
     get_machine,
     ingest_agent_snapshot,
     ingest_agent_telemetry,
     list_machines,
+    machine_card,
+    machine_history,
+    next_ticket,
     register_agent,
     remediate,
     run_scan,
     seed_demo_fleet,
-    seed_local,
     state,
     telemetry_loop,
 )
@@ -107,8 +114,7 @@ def _set_session_cookie(response: Response, sid: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_bench_token()
-    seed_local()
-    seed_demo_fleet()
+    boot_bench()
     task = asyncio.create_task(telemetry_loop())
     yield
     task.cancel()
@@ -193,7 +199,12 @@ def api_session_logout(request: Request, response: Response):
 
 @app.get("/api/machines")
 def api_machines():
-    return [m.model_dump(mode="json", exclude={"snapshot"}) for m in list_machines()]
+    return [machine_card(m) for m in list_machines()]
+
+
+@app.get("/api/fleet")
+def api_fleet():
+    return fleet_summary()
 
 
 @app.get("/api/machines/{machine_id}")
@@ -245,9 +256,34 @@ async def api_remediate(machine_id: str, body: RemediateIn):
     return m.model_dump(mode="json")
 
 
+@app.get("/api/machines/{machine_id}/history")
+def api_history(machine_id: str):
+    try:
+        return machine_history(machine_id)
+    except KeyError:
+        raise HTTPException(404, "Unknown machine")
+
+
+@app.post("/api/machines/{machine_id}/notes")
+def api_note(machine_id: str, body: NoteIn):
+    try:
+        note = add_note(machine_id, body.body)
+    except KeyError:
+        raise HTTPException(404, "Unknown machine")
+    return note.model_dump(mode="json")
+
+
+@app.get("/api/fleet/next")
+def api_next(after: str | None = None):
+    m = next_ticket(after)
+    if m is None:
+        raise HTTPException(404, "No bays")
+    return machine_card(m)
+
+
 @app.post("/api/demo/fleet")
 def api_demo_fleet():
-    created = seed_demo_fleet()
+    created = seed_demo_fleet(reset=True)
     return {"ok": True, "count": len(created)}
 
 
@@ -331,6 +367,31 @@ async def ws_machine(websocket: WebSocket, machine_id: str):
         pass
     finally:
         state.unsubscribe(machine_id, queue)
+
+
+@app.websocket("/api/ws/fleet")
+async def ws_fleet(websocket: WebSocket):
+    token = _bench_token()
+    auth = websocket.headers.get("authorization", "")
+    bearer_ok = auth.startswith("Bearer ") and token_ok(auth[7:].strip(), token)
+    cookie_ok = session_ok(websocket.cookies.get(SESSION_COOKIE))
+    if not bearer_ok and not cookie_ok:
+        await websocket.close(code=4401)
+        return
+    await websocket.accept()
+    queue = state.subscribe(FLEET_CHANNEL)
+    try:
+        await websocket.send_json({"type": "fleet", "summary": fleet_summary()})
+        while True:
+            try:
+                payload = await asyncio.wait_for(queue.get(), timeout=20)
+                await websocket.send_json(payload)
+            except TimeoutError:
+                await websocket.send_json({"type": "ping", "summary": fleet_summary()})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        state.unsubscribe(FLEET_CHANNEL, queue)
 
 
 if FRONTEND_DIST.exists():

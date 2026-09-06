@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Container listen is 0.0.0.0 *inside* the netns. Publish loopback-only:
 #   docker build -t tech-bench .
-#   docker run --rm -p 127.0.0.1:8000:8000 tech-bench
+#   docker run --rm -p 127.0.0.1:8000:8000 -v techbench-data:/app/data tech-bench
 
 FROM node:22-alpine AS ui
 WORKDIR /ui

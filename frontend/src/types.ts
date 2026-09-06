@@ -114,6 +114,53 @@ export interface Machine {
   open_critical?: number;
   open_warning?: number;
   open_info?: number;
+  notes?: TechNote[];
+  last_delta?: ScanDelta | null;
+  cpu_spark?: number[];
+  notes_count?: number;
+}
+
+export interface TechNote {
+  id: string;
+  machine_id: string;
+  ts: number;
+  body: string;
+}
+
+export interface JournalEntry {
+  machine_id: string;
+  ts: number;
+  action: string;
+  finding_id: string;
+  title: string;
+  severity: Severity | null;
+  detail: string;
+}
+
+export interface ScanDelta {
+  ts: number;
+  score_before: number;
+  score_after: number;
+  appeared: string[];
+  cleared: string[];
+  still_open: number;
+}
+
+export interface FleetSummary {
+  occupied: number;
+  critical: number;
+  warning: number;
+  ok: number;
+  offline: number;
+  open_critical: number;
+  open_warning: number;
+  worst: { id: string; alias: string; score: number; overall: Severity } | null;
+}
+
+export interface BayHistory {
+  journal: JournalEntry[];
+  scans: ScanDelta[];
+  notes: TechNote[];
 }
 
 export type ToolId =
@@ -124,4 +171,5 @@ export type ToolId =
   | "network"
   | "storage"
   | "events"
-  | "thermals";
+  | "thermals"
+  | "journal";

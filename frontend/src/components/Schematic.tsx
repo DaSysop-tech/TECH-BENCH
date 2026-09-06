@@ -61,7 +61,7 @@ export default function Schematic({
 
       {/* Rear I/O / network */}
       <g
-        className={`part ${selected === "network" ? "selected" : ""}`}
+        className={`part ${selected === "network" ? "selected" : ""} ${net === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("network")}
         filter="url(#glow)"
       >
@@ -76,7 +76,7 @@ export default function Schematic({
 
       {/* PSU */}
       <g
-        className={`part ${selected === "psu" ? "selected" : ""}`}
+        className={`part ${selected === "psu" ? "selected" : ""} ${psu === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("psu")}
         filter="url(#glow)"
       >
@@ -91,7 +91,7 @@ export default function Schematic({
 
       {/* CPU */}
       <g
-        className={`part ${selected === "cpu" ? "selected" : ""}`}
+        className={`part ${selected === "cpu" ? "selected" : ""} ${cpu === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("cpu")}
         filter="url(#glow)"
       >
@@ -104,7 +104,7 @@ export default function Schematic({
 
       {/* Memory DIMMs */}
       <g
-        className={`part ${selected === "memory" ? "selected" : ""}`}
+        className={`part ${selected === "memory" ? "selected" : ""} ${mem === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("memory")}
         filter="url(#glow)"
       >
@@ -126,7 +126,7 @@ export default function Schematic({
 
       {/* Chipset / OS */}
       <g
-        className={`part ${selected === "os" ? "selected" : ""}`}
+        className={`part ${selected === "os" ? "selected" : ""} ${os === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("os")}
         filter="url(#glow)"
       >
@@ -138,7 +138,7 @@ export default function Schematic({
 
       {/* GPU */}
       <g
-        className={`part ${selected === "gpu" ? "selected" : ""}`}
+        className={`part ${selected === "gpu" ? "selected" : ""} ${gpu === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("gpu")}
         filter="url(#glow)"
       >
@@ -150,7 +150,7 @@ export default function Schematic({
 
       {/* Storage */}
       <g
-        className={`part ${selected === "storage" ? "selected" : ""}`}
+        className={`part ${selected === "storage" ? "selected" : ""} ${storage === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("storage")}
         filter="url(#glow)"
       >
@@ -166,7 +166,7 @@ export default function Schematic({
 
       {/* Fans / thermal */}
       <g
-        className={`part ${selected === "thermal" ? "selected" : ""}`}
+        className={`part ${selected === "thermal" ? "selected" : ""} ${thermal === "critical" ? "crit-pulse" : ""}`}
         onClick={() => onSelect("thermal")}
         filter="url(#glow)"
       >
