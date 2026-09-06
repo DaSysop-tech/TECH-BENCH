@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import re
 import secrets
 import time
 from collections import defaultdict, deque
@@ -131,6 +132,27 @@ def same_origin_ok(origin: str | None, host: str | None) -> bool:
     if origin_host not in LOOPBACK_HOSTS:
         return False
     return req_host in LOOPBACK_HOSTS | {"testserver"}
+
+
+_HOST_HEADER = re.compile(r"^(?:\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+)(?::\d{1,5})?$")
+
+
+def pair_agent_command(host_header: str | None, code: str) -> str:
+    """Build a copy-paste agent command. Never embeds the bench token itself."""
+    host = (host_header or "").strip()
+    if not _HOST_HEADER.fullmatch(host):
+        host = "127.0.0.1:8000"
+    if host.startswith("["):
+        hostname = host.split("]")[0].lstrip("[").lower()
+    else:
+        hostname = host.split(":")[0].lower()
+    loopback = hostname in LOOPBACK_HOSTS or hostname.startswith("127.")
+    scheme = "http" if loopback else "https"
+    token_arg = '"$(cat data/bench.token)"' if loopback else "BENCH_TOKEN"
+    return (
+        f"python agent/techbench_agent.py --server {scheme}://{host} "
+        f"--code {code} --bench-token {token_arg}"
+    )
 
 
 def assert_safe_bench_url(url: str) -> str:

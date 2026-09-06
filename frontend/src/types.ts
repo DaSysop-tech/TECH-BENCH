@@ -107,10 +107,13 @@ export interface Machine {
   last_seen: number;
   overall: Severity;
   health_score: number;
-  snapshot: MachineSnapshot | null;
+  snapshot?: MachineSnapshot | null;
   findings: Finding[];
   location: string;
   owner: string;
+  open_critical?: number;
+  open_warning?: number;
+  open_info?: number;
 }
 
 export type ToolId =

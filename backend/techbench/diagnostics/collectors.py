@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import psutil
+from pydantic import ValidationError
 
 from techbench.models import (
     ComponentHealth,
@@ -18,6 +19,17 @@ from techbench.models import (
     TelemetrySample,
     VolumeInfo,
 )
+
+
+def _pct(value: float | None, cap: float = 100.0) -> float:
+    """psutil per-process CPU can exceed 100% on multi-core hosts."""
+    try:
+        n = float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if n != n:
+        return 0.0
+    return max(0.0, min(cap, n))
 
 
 def collect_local_snapshot() -> MachineSnapshot:
@@ -66,15 +78,15 @@ def collect_local_snapshot() -> MachineSnapshot:
             processes.append(
                 ProcessInfo(
                     pid=proc.pid,
-                    name=proc.info.get("name") or "unknown",
-                    cpu_pct=cpu,
-                    mem_pct=mem,
-                    user=proc.info.get("username") or "",
+                    name=(proc.info.get("name") or "unknown")[:128],
+                    cpu_pct=_pct(cpu),
+                    mem_pct=_pct(mem),
+                    user=(proc.info.get("username") or "")[:64],
                     path=exe[:180],
                     signed=None,
                 )
             )
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil.NoSuchProcess, psutil.AccessDenied, ValidationError):
             continue
     processes.sort(key=lambda p: p.cpu_pct + p.mem_pct, reverse=True)
     processes = processes[:24]
@@ -82,9 +94,9 @@ def collect_local_snapshot() -> MachineSnapshot:
     disk_used = max((v.used_pct for v in volumes), default=0)
     sample = TelemetrySample(
         ts=time.time(),
-        cpu_pct=cpu_pct,
-        mem_pct=vm.percent,
-        disk_pct=disk_used,
+        cpu_pct=_pct(cpu_pct),
+        mem_pct=_pct(vm.percent),
+        disk_pct=_pct(disk_used),
         net_kbps=((net.bytes_sent + net.bytes_recv) / 1024) % 8000 if net else 0,
         cpu_temp_c=temps,
         gpu_temp_c=None,
@@ -208,9 +220,9 @@ def collect_local_telemetry() -> TelemetrySample:
         pass
     return TelemetrySample(
         ts=time.time(),
-        cpu_pct=cpu,
-        mem_pct=vm.percent,
-        disk_pct=disk_pct,
+        cpu_pct=_pct(cpu),
+        mem_pct=_pct(vm.percent),
+        disk_pct=_pct(disk_pct),
         net_kbps=((net.bytes_sent + net.bytes_recv) / 1024) % 4000 if net else 0,
         cpu_temp_c=_cpu_temp(),
     )

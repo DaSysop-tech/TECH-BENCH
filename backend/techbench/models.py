@@ -134,6 +134,9 @@ class Machine(BaseModel):
     findings: list[Finding] = Field(default_factory=list, max_length=40)
     location: str = Field(default="", max_length=128)
     owner: str = Field(default="", max_length=128)
+    open_critical: int = Field(default=0, ge=0)
+    open_warning: int = Field(default=0, ge=0)
+    open_info: int = Field(default=0, ge=0)
 
 
 class PairRequest(BaseModel):

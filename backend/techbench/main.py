@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from techbench import __version__
@@ -20,6 +20,7 @@ from techbench.models import (
     RemediateIn,
     SessionIn,
 )
+from techbench.report import render_markdown_report
 from techbench.security import (
     MAX_BODY_BYTES,
     SECURITY_HEADERS,
@@ -31,6 +32,7 @@ from techbench.security import (
     host_header_ok,
     is_loopback_ip,
     issue_session,
+    pair_agent_command,
     safe_dist_file,
     same_origin_ok,
     session_ok,
@@ -191,7 +193,7 @@ def api_session_logout(request: Request, response: Response):
 
 @app.get("/api/machines")
 def api_machines():
-    return [m.model_dump(mode="json") for m in list_machines()]
+    return [m.model_dump(mode="json", exclude={"snapshot"}) for m in list_machines()]
 
 
 @app.get("/api/machines/{machine_id}")
@@ -200,6 +202,21 @@ def api_machine(machine_id: str):
         return get_machine(machine_id).model_dump(mode="json")
     except KeyError:
         raise HTTPException(404, "Machine not on the bench")
+
+
+@app.get("/api/machines/{machine_id}/report")
+def api_report(machine_id: str):
+    try:
+        machine = get_machine(machine_id)
+    except KeyError:
+        raise HTTPException(404, "Machine not on the bench")
+    safe_id = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in machine_id)[:64]
+    body = render_markdown_report(machine)
+    return PlainTextResponse(
+        body,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="techbench-{safe_id}.md"'},
+    )
 
 
 @app.get("/api/machines/{machine_id}/telemetry")
@@ -240,11 +257,7 @@ def api_pair(body: PairRequest, request: Request):
     if not _pair_limit.hit(ip):
         raise HTTPException(429, "Too many pairing requests")
     code = create_pair_code(body.alias, body.location)
-    cmd = (
-        "python agent/techbench_agent.py "
-        "--server https://BENCH_HOST:8000 "
-        f"--code {code} --bench-token BENCH_TOKEN"
-    )
+    cmd = pair_agent_command(request.headers.get("host"), code)
     return PairResponse(code=code, agent_command=cmd)
 
 
@@ -328,4 +341,7 @@ if FRONTEND_DIST.exists():
         safe = safe_dist_file(FRONTEND_DIST, path)
         if safe is not None:
             return FileResponse(safe)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        return FileResponse(
+            FRONTEND_DIST / "index.html",
+            headers={"Cache-Control": "no-store"},
+        )

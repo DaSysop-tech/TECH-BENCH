@@ -54,6 +54,14 @@ def test_healthy_lab_is_clean():
     assert health_score(findings) >= 90
 
 
+def test_pct_clamp_allows_multicore_process_cpu():
+    from techbench.diagnostics.collectors import _pct
+
+    assert _pct(224.8) == 100.0
+    assert _pct(-3) == 0.0
+    assert _pct(None) == 0.0
+
+
 def test_remediation_clears_malware_process():
     snap = snapshot_for("sim-warehouse", 1_700_000_000)
     findings = diagnose(snap)
@@ -112,6 +120,10 @@ def test_pairing_and_snapshot(client):
     pair = client.post("/api/pair", json={"alias": "Lab PC", "location": "Bench 2"})
     assert pair.status_code == 200
     code = pair.json()["code"]
+    cmd = pair.json()["agent_command"]
+    assert code in cmd
+    assert "BENCH_HOST" not in cmd
+    assert "techbench_agent.py" in cmd
     snap = snapshot_for("sim-lab", 1).model_dump(mode="json")
     reg = client.post(
         "/api/agent/register",
@@ -129,3 +141,64 @@ def test_store_resets_between_clients(client):
     n = len(client.get("/api/machines").json())
     assert n >= 7
     assert "local-workstation" in state.machines
+
+
+def test_machine_list_omits_snapshot_and_counts_findings(client):
+    machines = client.get("/api/machines").json()
+    assert machines
+    for m in machines:
+        assert "snapshot" not in m
+        assert "open_critical" in m
+        assert "open_warning" in m
+        assert "open_info" in m
+    frontdesk = next(m for m in machines if m["id"] == "sim-frontdesk")
+    assert frontdesk["open_critical"] >= 1
+    warehouse = next(m for m in machines if m["id"] == "sim-warehouse")
+    assert warehouse["open_critical"] + warehouse["open_warning"] + warehouse["open_info"] >= 1
+    lab = next(m for m in machines if m["id"] == "sim-lab")
+    assert lab["open_critical"] == 0
+
+
+def test_markdown_report_flattens_agent_text():
+    from techbench.models import Finding, Inventory, Machine, MachineKind, MachineSnapshot, Severity
+    from techbench.report import render_markdown_report
+
+    snap = MachineSnapshot(
+        inventory=Inventory(hostname="x", os="Linux", cpu="t", ram_gb=8),
+    )
+    m = Machine(
+        id="remote-x",
+        hostname="x",
+        alias="Box",
+        os="Linux",
+        kind=MachineKind.remote,
+        snapshot=snap,
+        findings=[
+            Finding(
+                id="t",
+                severity=Severity.warning,
+                component="os",
+                title="](http://evil)",
+                summary="line1\nline2 `code`",
+                evidence=["a\nb"],
+                recommendations=["do\nstuff"],
+            )
+        ],
+        open_warning=1,
+    )
+    body = render_markdown_report(m)
+    assert "](http://evil)" not in body
+    assert "line1 line2 'code'" in body
+
+
+def test_markdown_report_export(client):
+    r = client.get("/api/machines/sim-frontdesk/report")
+    assert r.status_code == 200
+    assert "text/markdown" in r.headers["content-type"]
+    assert "techbench-sim-frontdesk.md" in r.headers.get("content-disposition", "")
+    body = r.text
+    assert "TECH-BENCH report" in body
+    assert "sim-frontdesk" in body
+    assert "Open findings" in body
+    missing = client.get("/api/machines/does-not-exist/report")
+    assert missing.status_code == 404
