@@ -13,6 +13,12 @@ sys.path.insert(0, str(ROOT / "backend"))
 import uvicorn
 
 if __name__ == "__main__":
-    host = os.environ.get("TECHBENCH_HOST", "0.0.0.0")
+    host = os.environ.get("TECHBENCH_HOST", "127.0.0.1")
     port = int(os.environ.get("TECHBENCH_PORT", "8000"))
+    if host not in {"127.0.0.1", "localhost", "::1"} and not os.environ.get("TECHBENCH_TOKEN"):
+        print(
+            "WARNING: TECHBENCH_HOST is not loopback and TECHBENCH_TOKEN is unset. "
+            "Anyone who can reach the port can drive the bench.",
+            file=sys.stderr,
+        )
     uvicorn.run("techbench.main:app", host=host, port=port, reload=False)

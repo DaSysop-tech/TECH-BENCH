@@ -28,7 +28,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 
 ```bash
 source .venv/bin/activate
-PYTHONPATH=backend python -m uvicorn techbench.main:app --reload --host 0.0.0.0 --port 8000
+PYTHONPATH=backend python -m uvicorn techbench.main:app --reload --host 127.0.0.1 --port 8000
 # other terminal
 cd frontend && npm install && npm run dev
 ```
@@ -40,10 +40,12 @@ Vite proxies `/api` (including WebSocket) to port 8000.
 On the bench, click **Pair remote PC** and copy the code. On the remote machine (operator-consented):
 
 ```bash
-python agent/techbench_agent.py --server http://BENCH_HOST:8000 --code ABC-DEF
+python agent/techbench_agent.py --server http://BENCH_HOST:8000 --code ABCDE-FGHIJ
 ```
 
 The agent uploads inventory + a diagnostic snapshot, then heartbeats telemetry. It does not open a shell or install persistence.
+
+Codes look like `A1B2C-D3E4F`. If the bench was started with `TECHBENCH_TOKEN`, also pass `--bench-token`.
 
 ## Tests
 
@@ -65,3 +67,11 @@ PYTHONPATH=backend pytest -q
 ## Safety
 
 Use only on systems you own or are authorized to support. Pairing codes expire. Simulated playbooks never execute arbitrary commands.
+
+The bench is a **local technician console**, not a public SaaS:
+
+- `python run.py` binds **127.0.0.1** by default. Set `TECHBENCH_HOST=0.0.0.0` only on a trusted LAN.
+- Optional `TECHBENCH_TOKEN` requires `Authorization: Bearer …` on `/api/*` (except `/api/health`). Store the same value in the UI via `localStorage.techbenchToken`.
+- Pairing codes are 40-bit, single-use, 10 minutes. Mint and register endpoints are rate-limited.
+- The agent is read-mostly: no reverse shell, no persistence, no argv collection (executable path only).
+- Playbooks mutate simulated snapshots only; they do not run commands on live or remote PCs.

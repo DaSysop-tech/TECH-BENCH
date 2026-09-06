@@ -101,7 +101,7 @@ class Inventory(BaseModel):
     ram_gb: float
     gpu: str = "Unknown"
     motherboard: str = "Unknown"
-    disks: list[str] = Field(default_factory=list)
+    disks: list[str] = Field(default_factory=list, max_length=16)
     uptime_hours: float = 0
     ip: str = ""
     agent_version: str = "1.0.0"
@@ -109,12 +109,12 @@ class Inventory(BaseModel):
 
 class MachineSnapshot(BaseModel):
     inventory: Inventory
-    components: list[ComponentHealth] = Field(default_factory=list)
-    processes: list[ProcessInfo] = Field(default_factory=list)
-    volumes: list[VolumeInfo] = Field(default_factory=list)
-    network: dict[str, Any] = Field(default_factory=dict)
-    events: list[EventInfo] = Field(default_factory=list)
-    smart: list[SmartInfo] = Field(default_factory=list)
+    components: list[ComponentHealth] = Field(default_factory=list, max_length=32)
+    processes: list[ProcessInfo] = Field(default_factory=list, max_length=64)
+    volumes: list[VolumeInfo] = Field(default_factory=list, max_length=32)
+    network: dict[str, Any] = Field(default_factory=dict, max_length=32)
+    events: list[EventInfo] = Field(default_factory=list, max_length=50)
+    smart: list[SmartInfo] = Field(default_factory=list, max_length=16)
     telemetry: TelemetrySample | None = None
     defender_enabled: bool | None = None
     startup_count: int | None = None

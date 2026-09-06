@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from techbench import __version__
@@ -18,6 +19,7 @@ from techbench.models import (
     PairResponse,
     RemediateIn,
 )
+from techbench.security import RateLimiter, safe_dist_file
 from techbench.store import (
     create_pair_code,
     get_machine,
@@ -34,6 +36,27 @@ from techbench.store import (
 )
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+BENCH_TOKEN = os.environ.get("TECHBENCH_TOKEN", "")
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "TECHBENCH_CORS",
+        "http://127.0.0.1:8000,http://localhost:8000,http://127.0.0.1:5173,http://localhost:5173",
+    ).split(",")
+    if o.strip()
+]
+_pair_limit = RateLimiter(10, 60)
+_register_limit = RateLimiter(30, 60)
+
+
+def _authorized(request: Request) -> bool:
+    if not BENCH_TOKEN:
+        return True
+    path = request.url.path
+    if path == "/api/health" or not path.startswith("/api"):
+        return True
+    auth = request.headers.get("authorization", "")
+    return auth == f"Bearer {BENCH_TOKEN}"
 
 
 @asynccontextmanager
@@ -58,11 +81,18 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def bench_auth(request: Request, call_next):
+    if not _authorized(request):
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/api/health")
@@ -117,6 +147,8 @@ def api_demo_fleet():
 
 @app.post("/api/pair", response_model=PairResponse)
 def api_pair(body: PairRequest):
+    if not _pair_limit.hit():
+        raise HTTPException(429, "Too many pairing requests")
     code = create_pair_code(body.alias, body.location)
     cmd = f"python agent/techbench_agent.py --server http://BENCH_HOST:8000 --code {code}"
     return PairResponse(code=code, agent_command=cmd)
@@ -124,6 +156,8 @@ def api_pair(body: PairRequest):
 
 @app.post("/api/agent/register")
 def api_agent_register(body: AgentRegister):
+    if not _register_limit.hit():
+        raise HTTPException(429, "Too many register attempts")
     try:
         token, machine = register_agent(body.code, body.inventory)
     except PermissionError as exc:
@@ -153,6 +187,12 @@ async def api_agent_telemetry(body: AgentTelemetryIn):
 
 @app.websocket("/api/ws/machines/{machine_id}")
 async def ws_machine(websocket: WebSocket, machine_id: str):
+    if BENCH_TOKEN:
+        auth = websocket.headers.get("authorization", "")
+        qtok = websocket.query_params.get("access_token", "")
+        if auth != f"Bearer {BENCH_TOKEN}" and qtok != BENCH_TOKEN:
+            await websocket.close(code=4401)
+            return
     if machine_id not in state.machines:
         await websocket.close(code=4404)
         return
@@ -183,7 +223,7 @@ if FRONTEND_DIST.exists():
 
     @app.get("/{path:path}")
     def spa(path: str):
-        candidate = FRONTEND_DIST / path
-        if path and candidate.exists() and candidate.is_file():
-            return FileResponse(candidate)
+        safe = safe_dist_file(FRONTEND_DIST, path)
+        if safe is not None:
+            return FileResponse(safe)
         return FileResponse(FRONTEND_DIST / "index.html")

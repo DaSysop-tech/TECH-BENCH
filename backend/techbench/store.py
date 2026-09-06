@@ -156,8 +156,8 @@ def get_machine(machine_id: str) -> Machine:
 
 
 def create_pair_code(alias: str, location: str) -> str:
-    code = secrets.token_hex(3).upper()
-    code = f"{code[:3]}-{code[3:]}"
+    raw = secrets.token_hex(5).upper()
+    code = f"{raw[:5]}-{raw[5:]}"
     state.pair_slots[code] = PairSlot(code=code, alias=alias, location=location, expires=time.time() + 600)
     return code
 

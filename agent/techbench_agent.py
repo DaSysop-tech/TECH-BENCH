@@ -30,11 +30,19 @@ def main() -> int:
     parser.add_argument("--server", required=True, help="Bench base URL, e.g. http://bench:8000")
     parser.add_argument("--code", required=True, help="Pairing code from the bench")
     parser.add_argument("--interval", type=float, default=2.0, help="Telemetry interval seconds")
+    parser.add_argument(
+        "--bench-token",
+        default="",
+        help="Optional TECHBENCH_TOKEN if the bench requires Bearer auth",
+    )
     args = parser.parse_args()
     base = args.server.rstrip("/")
+    headers = {}
+    if args.bench_token:
+        headers["Authorization"] = f"Bearer {args.bench_token}"
 
     snap = collect_local_snapshot()
-    with httpx.Client(timeout=15) as client:
+    with httpx.Client(timeout=15, follow_redirects=False, headers=headers) as client:
         reg = client.post(
             f"{base}/api/agent/register",
             json={"code": args.code, "inventory": snap.inventory.model_dump(mode="json")},
